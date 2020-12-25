@@ -55,11 +55,12 @@ public:
              uint32_t                  queueFamily) override;
   void createDescriptorSetLayout();
   void createGraphicsPipeline();
-  void loadModel(const std::string& filename, nvmath::mat4f transform = nvmath::mat4f(1));
+  void loadModel(const std::string& filename, const std::string& texturesPath = "media/textures/", nvmath::mat4f transform = nvmath::mat4f(1));
   void updateDescriptorSet();
   void createUniformBuffer();
   void createSceneDescriptionBuffer();
   void createTextureImages(const vk::CommandBuffer&        cmdBuf,
+                           const std::string& texturesPath,
                            const std::vector<std::string>& textures);
   void updateUniformBuffer(const vk::CommandBuffer& cmdBuf);
   void onResize(int /*w*/, int /*h*/) override;

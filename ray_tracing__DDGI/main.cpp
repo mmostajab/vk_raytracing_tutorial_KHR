@@ -213,9 +213,10 @@ int main(int argc, char** argv)
   helloVk.initGUI(0);  // Using sub-pass 0
 
   // Creating scene
-  helloVk.loadModel(nvh::findFile("media/scenes/Medieval_building.obj", defaultSearchPaths, true));
+  helloVk.loadModel(nvh::findFile("media/sponza/sponza.obj", defaultSearchPaths, true), "media/sponza/");
   helloVk.loadModel(nvh::findFile("media/scenes/plane.obj", defaultSearchPaths, true));
   helloVk.loadModel(nvh::findFile("media/scenes/wuson.obj", defaultSearchPaths, true),
+                    "media/textures/",
                     nvmath::scale_mat4(nvmath::vec3f(0.5f))
                         * nvmath::translation_mat4(nvmath::vec3f(0.0f, 0.0f, 6.0f)));
 

@@ -267,7 +267,9 @@ void HelloVulkan::createGraphicsPipeline()
 //--------------------------------------------------------------------------------------------------
 // Loading the OBJ file and setting up all buffers
 //
-void HelloVulkan::loadModel(const std::string& filename, nvmath::mat4f transform)
+void HelloVulkan::loadModel(const std::string& filename,
+                            const std::string& texturesPath, 
+							nvmath::mat4f transform)
 {
   using vkBU = vk::BufferUsageFlagBits;
 
@@ -307,7 +309,7 @@ void HelloVulkan::loadModel(const std::string& filename, nvmath::mat4f transform
   model.matColorBuffer = m_alloc.createBuffer(cmdBuf, loader.m_materials, vkBU::eStorageBuffer);
   model.matIndexBuffer = m_alloc.createBuffer(cmdBuf, loader.m_matIndx, vkBU::eStorageBuffer);
   // Creates all textures found
-  createTextureImages(cmdBuf, loader.m_textures);
+  createTextureImages(cmdBuf, texturesPath, loader.m_textures);
   cmdBufGet.submitAndWait(cmdBuf);
   m_alloc.finalizeAndReleaseStaging();
 
@@ -357,6 +359,7 @@ void HelloVulkan::createSceneDescriptionBuffer()
 // Creating all textures and samplers
 //
 void HelloVulkan::createTextureImages(const vk::CommandBuffer&        cmdBuf,
+                                      const std::string&              texturesPath,
                                       const std::vector<std::string>& textures)
 {
   using vkIU = vk::ImageUsageFlagBits;
@@ -393,7 +396,7 @@ void HelloVulkan::createTextureImages(const vk::CommandBuffer&        cmdBuf,
     {
       std::stringstream o;
       int               texWidth, texHeight, texChannels;
-      o << "media/textures/" << texture;
+      o << texturesPath << texture;
       std::string txtFile = nvh::findFile(o.str(), defaultSearchPaths, true);
 
       stbi_uc* stbi_pixels =
