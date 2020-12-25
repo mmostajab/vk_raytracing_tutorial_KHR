@@ -32,11 +32,28 @@ _add_package_ZLIB()
 _add_shared_sources_lib()
 
 message(STATUS "COPY ${CMAKE_CURRENT_SOURCE_DIR}/media  to  ${EXECUTABLE_OUTPUT_PATH}")
+
+if (NOT EXISTS
+ "${CMAKE_CURRENT_SOURCE_DIR}/media/sponza/sponza.zip")
+        MESSAGE(STATUS "Downloading Sponza Model")
+        file(DOWNLOAD https://casual-effects.com/g3d/data10/common/model/crytek_sponza/sponza.zip
+ "${CMAKE_CURRENT_SOURCE_DIR}/media/sponza/sponza.zip"
+ SHOW_PROGRESS)
+ 
+ execute_process(
+	COMMAND ${CMAKE_COMMAND} -E tar xJ sponza.zip
+	WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/media/sponza"
+ )
+
+endif()
+
+
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/media DESTINATION ${EXECUTABLE_OUTPUT_PATH})
 
 
 #--------------------------------------------------------------------------------------------------
 # Sub examples
+add_subdirectory(ray_tracing__DDGI) 
 add_subdirectory(ray_tracing__advance) 
 add_subdirectory(ray_tracing__before) 
 add_subdirectory(ray_tracing__simple)
