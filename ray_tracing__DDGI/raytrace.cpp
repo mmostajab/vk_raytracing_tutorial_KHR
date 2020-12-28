@@ -51,16 +51,13 @@ void Raytracer::setup(const vk::Device&         device,
   auto properties =
       m_physicalDevice.getProperties2<vk::PhysicalDeviceProperties2,
                                       vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-  m_rtProperties = properties.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-  m_rtBuilder.setup(m_device, allocator, m_graphicsQueueIndex);
-
+  m_rtProperties = properties.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>(); 
   m_debug.setup(device);
 }
 
 
 void Raytracer::destroy()
 {
-  m_rtBuilder.destroy();
   m_device.destroy(m_rtDescPool);
   m_device.destroy(m_rtDescSetLayout);
   m_device.destroy(m_rtPipeline);
@@ -69,136 +66,9 @@ void Raytracer::destroy()
 }
 
 //--------------------------------------------------------------------------------------------------
-// Converting a OBJ primitive to the ray tracing geometry used for the BLAS
-//
-nvvk::RaytracingBuilderKHR::BlasInput Raytracer::objectToVkGeometryKHR(const ObjModel& model)
-{
-  // Building part
-  vk::DeviceAddress vertexAddress = m_device.getBufferAddress({model.vertexBuffer.buffer});
-  vk::DeviceAddress indexAddress  = m_device.getBufferAddress({model.indexBuffer.buffer});
-
-  vk::AccelerationStructureGeometryTrianglesDataKHR triangles;
-  triangles.setVertexFormat(vk::Format::eR32G32B32Sfloat);
-  triangles.setVertexData(vertexAddress);
-  triangles.setVertexStride(sizeof(VertexObj));
-  triangles.setIndexType(vk::IndexType::eUint32);
-  triangles.setIndexData(indexAddress);
-  triangles.setTransformData({});
-  triangles.setMaxVertex(model.nbVertices);
-
-  // Setting up the build info of the acceleration
-  vk::AccelerationStructureGeometryKHR asGeom;
-  asGeom.setGeometryType(vk::GeometryTypeKHR::eTriangles);
-  asGeom.setFlags(vk::GeometryFlagBitsKHR::eNoDuplicateAnyHitInvocation);  // For AnyHit
-  asGeom.geometry.setTriangles(triangles);
-
-
-  vk::AccelerationStructureBuildRangeInfoKHR offset;
-  offset.setFirstVertex(0);
-  offset.setPrimitiveCount(model.nbIndices / 3);  // Nb triangles
-  offset.setPrimitiveOffset(0);
-  offset.setTransformOffset(0);
-
-  nvvk::RaytracingBuilderKHR::BlasInput input;
-  input.asGeometry.emplace_back(asGeom);
-  input.asBuildOffsetInfo.emplace_back(offset);
-  return input;
-}
-
-
-//--------------------------------------------------------------------------------------------------
-// Returning the ray tracing geometry used for the BLAS, containing all spheres
-//
-nvvk::RaytracingBuilderKHR::BlasInput Raytracer::implicitToVkGeometryKHR(
-    const ImplInst& implicitObj)
-{
-  vk::DeviceAddress dataAddress = m_device.getBufferAddress({implicitObj.implBuf.buffer});
-
-  vk::AccelerationStructureGeometryAabbsDataKHR aabbs;
-  aabbs.setData(dataAddress);
-  aabbs.setStride(sizeof(ObjImplicit));
-
-  // Setting up the build info of the acceleration
-  VkAccelerationStructureGeometryKHR asGeom{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
-  asGeom.geometryType   = VK_GEOMETRY_TYPE_AABBS_KHR;
-  asGeom.flags          = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;  // For AnyHit
-  asGeom.geometry.aabbs = aabbs;
-
-
-  vk::AccelerationStructureBuildRangeInfoKHR offset;
-  offset.setFirstVertex(0);
-  offset.setPrimitiveCount(static_cast<uint32_t>(implicitObj.objImpl.size()));  // Nb aabb
-  offset.setPrimitiveOffset(0);
-  offset.setTransformOffset(0);
-
-  nvvk::RaytracingBuilderKHR::BlasInput input;
-  input.asGeometry.emplace_back(asGeom);
-  input.asBuildOffsetInfo.emplace_back(offset);
-  return input;
-}
-
-
-void Raytracer::createBottomLevelAS(std::vector<ObjModel>& models, ImplInst& implicitObj)
-{
-  // BLAS - Storing each primitive in a geometry
-  std::vector<nvvk::RaytracingBuilderKHR::BlasInput> allBlas;
-  allBlas.reserve(models.size());
-  for(const auto& obj : models)
-  {
-    auto blas = objectToVkGeometryKHR(obj);
-
-    // We could add more geometry in each BLAS, but we add only one for now
-    allBlas.emplace_back(blas);
-  }
-
-  // Adding implicit
-  if(!implicitObj.objImpl.empty())
-  {
-    auto blas = implicitToVkGeometryKHR(implicitObj);
-    allBlas.emplace_back(blas);
-    implicitObj.blasId = static_cast<int>(allBlas.size() - 1);  // remember blas ID for tlas
-  }
-
-
-  m_rtBuilder.buildBlas(allBlas, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace
-                                     | vk::BuildAccelerationStructureFlagBitsKHR::eAllowCompaction);
-}
-
-void Raytracer::createTopLevelAS(std::vector<ObjInstance>& instances, ImplInst& implicitObj)
-{
-  std::vector<nvvk::RaytracingBuilderKHR::Instance> tlas;
-  tlas.reserve(instances.size());
-  for(int i = 0; i < static_cast<int>(instances.size()); i++)
-  {
-    nvvk::RaytracingBuilderKHR::Instance rayInst;
-    rayInst.transform        = instances[i].transform;  // Position of the instance
-    rayInst.instanceCustomId = i;                       // gl_InstanceCustomIndexEXT
-    rayInst.blasId           = instances[i].objIndex;
-    rayInst.hitGroupId       = 0;  // We will use the same hit group for all objects
-    rayInst.flags            = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-    tlas.emplace_back(rayInst);
-  }
-
-  // Add the blas containing all implicit
-  if(!implicitObj.objImpl.empty())
-  {
-    nvvk::RaytracingBuilderKHR::Instance rayInst;
-    rayInst.transform = implicitObj.transform;  // Position of the instance
-    rayInst.instanceCustomId =
-        static_cast<uint32_t>(implicitObj.blasId);  // Same for material index
-    rayInst.blasId     = static_cast<uint32_t>(implicitObj.blasId);
-    rayInst.hitGroupId = 1;  // We will use the same hit group for all objects (the second one)
-    rayInst.flags      = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-    tlas.emplace_back(rayInst);
-  }
-
-  m_rtBuilder.buildTlas(tlas, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
-}
-
-//--------------------------------------------------------------------------------------------------
 // This descriptor set holds the Acceleration structure and the output image
 //
-void Raytracer::createRtDescriptorSet(const vk::ImageView& outputImage)
+void Raytracer::createRtDescriptorSet(const vk::AccelerationStructureKHR& tlas, const vk::ImageView& outputImage)
 {
   using vkDT   = vk::DescriptorType;
   using vkSS   = vk::ShaderStageFlagBits;
@@ -213,7 +83,6 @@ void Raytracer::createRtDescriptorSet(const vk::ImageView& outputImage)
   m_rtDescSetLayout = m_rtDescSetLayoutBind.createLayout(m_device);
   m_rtDescSet       = m_device.allocateDescriptorSets({m_rtDescPool, 1, &m_rtDescSetLayout})[0];
 
-  vk::AccelerationStructureKHR                   tlas = m_rtBuilder.getAccelerationStructure();
   vk::WriteDescriptorSetAccelerationStructureKHR descASInfo;
   descASInfo.setAccelerationStructureCount(1);
   descASInfo.setPAccelerationStructures(&tlas);

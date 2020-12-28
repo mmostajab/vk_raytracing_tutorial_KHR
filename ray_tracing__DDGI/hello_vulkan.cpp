@@ -83,8 +83,8 @@ void HelloVulkan::setup(const vk::Instance&       instance,
 #endif
   m_debug.setup(m_device);
 
-
   m_offscreen.setup(device, &m_alloc, queueFamily);
+  m_rtBuilder.setup(m_device, &m_alloc, queueFamily);
   m_raytrace.setup(device, physicalDevice, &m_alloc, queueFamily);
 }
 
@@ -463,6 +463,7 @@ void HelloVulkan::destroyResources()
   m_offscreen.destroy();
 
   // #VKRay
+  m_rtBuilder.destroy();
   m_raytrace.destroy();
 
   m_alloc.deinit();
@@ -533,11 +534,138 @@ void HelloVulkan::initOffscreen()
 //
 void HelloVulkan::initRayTracing()
 {
-  m_raytrace.createBottomLevelAS(m_objModel, m_implObjects);
-  m_raytrace.createTopLevelAS(m_objInstance, m_implObjects);
-  m_raytrace.createRtDescriptorSet(m_offscreen.colorTexture().descriptor.imageView);
+  createBottomLevelAS(m_objModel, m_implObjects);
+  createTopLevelAS(m_objInstance, m_implObjects);
+  m_raytrace.createRtDescriptorSet(m_rtBuilder.getAccelerationStructure(), m_offscreen.colorTexture().descriptor.imageView);
   m_raytrace.createRtPipeline(m_descSetLayout);
   m_raytrace.createRtShaderBindingTable();
+}
+
+//--------------------------------------------------------------------------------------------------
+// Converting a OBJ primitive to the ray tracing geometry used for the BLAS
+//
+nvvk::RaytracingBuilderKHR::BlasInput HelloVulkan::objectToVkGeometryKHR(const ObjModel& model)
+{
+  // Building part
+  vk::DeviceAddress vertexAddress = m_device.getBufferAddress({model.vertexBuffer.buffer});
+  vk::DeviceAddress indexAddress  = m_device.getBufferAddress({model.indexBuffer.buffer});
+
+  vk::AccelerationStructureGeometryTrianglesDataKHR triangles;
+  triangles.setVertexFormat(vk::Format::eR32G32B32Sfloat);
+  triangles.setVertexData(vertexAddress);
+  triangles.setVertexStride(sizeof(VertexObj));
+  triangles.setIndexType(vk::IndexType::eUint32);
+  triangles.setIndexData(indexAddress);
+  triangles.setTransformData({});
+  triangles.setMaxVertex(model.nbVertices);
+
+  // Setting up the build info of the acceleration
+  vk::AccelerationStructureGeometryKHR asGeom;
+  asGeom.setGeometryType(vk::GeometryTypeKHR::eTriangles);
+  asGeom.setFlags(vk::GeometryFlagBitsKHR::eNoDuplicateAnyHitInvocation);  // For AnyHit
+  asGeom.geometry.setTriangles(triangles);
+
+
+  vk::AccelerationStructureBuildRangeInfoKHR offset;
+  offset.setFirstVertex(0);
+  offset.setPrimitiveCount(model.nbIndices / 3);  // Nb triangles
+  offset.setPrimitiveOffset(0);
+  offset.setTransformOffset(0);
+
+  nvvk::RaytracingBuilderKHR::BlasInput input;
+  input.asGeometry.emplace_back(asGeom);
+  input.asBuildOffsetInfo.emplace_back(offset);
+  return input;
+}
+
+
+//--------------------------------------------------------------------------------------------------
+// Returning the ray tracing geometry used for the BLAS, containing all spheres
+//
+nvvk::RaytracingBuilderKHR::BlasInput HelloVulkan::implicitToVkGeometryKHR(
+    const ImplInst& implicitObj)
+{
+  vk::DeviceAddress dataAddress = m_device.getBufferAddress({implicitObj.implBuf.buffer});
+
+  vk::AccelerationStructureGeometryAabbsDataKHR aabbs;
+  aabbs.setData(dataAddress);
+  aabbs.setStride(sizeof(ObjImplicit));
+
+  // Setting up the build info of the acceleration
+  VkAccelerationStructureGeometryKHR asGeom{VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR};
+  asGeom.geometryType   = VK_GEOMETRY_TYPE_AABBS_KHR;
+  asGeom.flags          = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;  // For AnyHit
+  asGeom.geometry.aabbs = aabbs;
+
+
+  vk::AccelerationStructureBuildRangeInfoKHR offset;
+  offset.setFirstVertex(0);
+  offset.setPrimitiveCount(static_cast<uint32_t>(implicitObj.objImpl.size()));  // Nb aabb
+  offset.setPrimitiveOffset(0);
+  offset.setTransformOffset(0);
+
+  nvvk::RaytracingBuilderKHR::BlasInput input;
+  input.asGeometry.emplace_back(asGeom);
+  input.asBuildOffsetInfo.emplace_back(offset);
+  return input;
+}
+
+
+void HelloVulkan::createBottomLevelAS(std::vector<ObjModel>& models, ImplInst& implicitObj)
+{
+  // BLAS - Storing each primitive in a geometry
+  std::vector<nvvk::RaytracingBuilderKHR::BlasInput> allBlas;
+  allBlas.reserve(models.size());
+  for(const auto& obj : models)
+  {
+    auto blas = objectToVkGeometryKHR(obj);
+
+    // We could add more geometry in each BLAS, but we add only one for now
+    allBlas.emplace_back(blas);
+  }
+
+  // Adding implicit
+  if(!implicitObj.objImpl.empty())
+  {
+    auto blas = implicitToVkGeometryKHR(implicitObj);
+    allBlas.emplace_back(blas);
+    implicitObj.blasId = static_cast<int>(allBlas.size() - 1);  // remember blas ID for tlas
+  }
+
+
+  m_rtBuilder.buildBlas(allBlas, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace
+                                     | vk::BuildAccelerationStructureFlagBitsKHR::eAllowCompaction);
+}
+
+void HelloVulkan::createTopLevelAS(std::vector<ObjInstance>& instances, ImplInst& implicitObj)
+{
+  std::vector<nvvk::RaytracingBuilderKHR::Instance> tlas;
+  tlas.reserve(instances.size());
+  for(int i = 0; i < static_cast<int>(instances.size()); i++)
+  {
+    nvvk::RaytracingBuilderKHR::Instance rayInst;
+    rayInst.transform        = instances[i].transform;  // Position of the instance
+    rayInst.instanceCustomId = i;                       // gl_InstanceCustomIndexEXT
+    rayInst.blasId           = instances[i].objIndex;
+    rayInst.hitGroupId       = 0;  // We will use the same hit group for all objects
+    rayInst.flags            = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+    tlas.emplace_back(rayInst);
+  }
+
+  // Add the blas containing all implicit
+  if(!implicitObj.objImpl.empty())
+  {
+    nvvk::RaytracingBuilderKHR::Instance rayInst;
+    rayInst.transform = implicitObj.transform;  // Position of the instance
+    rayInst.instanceCustomId =
+        static_cast<uint32_t>(implicitObj.blasId);  // Same for material index
+    rayInst.blasId     = static_cast<uint32_t>(implicitObj.blasId);
+    rayInst.hitGroupId = 1;  // We will use the same hit group for all objects (the second one)
+    rayInst.flags      = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+    tlas.emplace_back(rayInst);
+  }
+
+  m_rtBuilder.buildTlas(tlas, vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace);
 }
 
 //--------------------------------------------------------------------------------------------------

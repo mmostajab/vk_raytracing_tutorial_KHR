@@ -43,11 +43,7 @@ public:
              uint32_t                  queueFamily);
   void destroy();
 
-  nvvk::RaytracingBuilderKHR::BlasInput objectToVkGeometryKHR(const ObjModel& model);
-  nvvk::RaytracingBuilderKHR::BlasInput implicitToVkGeometryKHR(const ImplInst& implicitObj);
-  void createBottomLevelAS(std::vector<ObjModel>& models, ImplInst& implicitObj);
-  void createTopLevelAS(std::vector<ObjInstance>& instances, ImplInst& implicitObj);
-  void createRtDescriptorSet(const vk::ImageView& outputImage);
+  void createRtDescriptorSet(const vk::AccelerationStructureKHR& tlas, const vk::ImageView& outputImage);
   void updateRtDescriptorSet(const vk::ImageView& outputImage);
   void createRtPipeline(vk::DescriptorSetLayout& sceneDescLayout);
   void createRtShaderBindingTable();
@@ -66,7 +62,6 @@ private:
 
 
   vk::PhysicalDeviceRayTracingPipelinePropertiesKHR   m_rtProperties;
-  nvvk::RaytracingBuilderKHR                          m_rtBuilder;
   nvvk::DescriptorSetBindings                         m_rtDescSetLayoutBind;
   vk::DescriptorPool                                  m_rtDescPool;
   vk::DescriptorSetLayout                             m_rtDescSetLayout;

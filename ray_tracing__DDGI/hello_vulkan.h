@@ -105,9 +105,15 @@ public:
 
   // #VKRay
   Raytracer m_raytrace;
+  nvvk::RaytracingBuilderKHR m_rtBuilder;
 
   void initRayTracing();
   void raytrace(const vk::CommandBuffer& cmdBuf, const nvmath::vec4f& clearColor);
+
+  nvvk::RaytracingBuilderKHR::BlasInput objectToVkGeometryKHR(const ObjModel& model);
+  nvvk::RaytracingBuilderKHR::BlasInput implicitToVkGeometryKHR(const ImplInst& implicitObj);
+  void createBottomLevelAS(std::vector<ObjModel>& models, ImplInst& implicitObj);
+  void createTopLevelAS(std::vector<ObjInstance>& instances, ImplInst& implicitObj);
 
   // Implicit
   ImplInst m_implObjects;
