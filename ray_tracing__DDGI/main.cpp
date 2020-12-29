@@ -214,6 +214,7 @@ int main(int argc, char** argv)
 
   // Creating scene
   helloVk.loadModel(nvh::findFile("media/sponza/sponza.obj", defaultSearchPaths, true), "media/sponza/");
+#if 0
   helloVk.loadModel(nvh::findFile("media/scenes/plane.obj", defaultSearchPaths, true));
   helloVk.loadModel(nvh::findFile("media/scenes/wuson.obj", defaultSearchPaths, true),
                     "media/textures/",
@@ -239,6 +240,7 @@ int main(int argc, char** argv)
     inst.transformIT = nvmath::transpose(nvmath::invert((inst.transform)));
     helloVk.m_objInstance.push_back(inst);
   }
+#endif
 
   // Creation of implicit geometry
   MaterialObj mat;

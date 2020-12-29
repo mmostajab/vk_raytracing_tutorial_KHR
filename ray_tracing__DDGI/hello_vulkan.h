@@ -105,6 +105,7 @@ public:
 
   // #VKRay
   Raytracer m_raytrace;
+  DDGI      m_ddgi;
   nvvk::RaytracingBuilderKHR m_rtBuilder;
 
   void initRayTracing();
