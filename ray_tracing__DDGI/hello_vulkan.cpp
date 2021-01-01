@@ -537,6 +537,10 @@ void HelloVulkan::initRayTracing()
                                    m_offscreen.colorTexture().descriptor.imageView);
   m_raytrace.createRtPipeline(m_descSetLayout);
   m_raytrace.createRtShaderBindingTable();
+
+  m_ddgi.createRtDescriptorSet(m_rtBuilder.getAccelerationStructure());
+  m_ddgi.createRtPipeline(m_descSetLayout);
+  m_ddgi.createRtShaderBindingTable();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -689,6 +693,9 @@ void HelloVulkan::updateFrame()
 
   const auto& m   = CameraManip.getMatrix();
   const auto  fov = CameraManip.getFov();
+
+  constexpr uint32_t DDGI_WIDTH = 16 * 1024, DDGI_HEIGHT = 8 * 1024;
+  m_ddgi.update(DDGI_WIDTH, DDGI_HEIGHT);
 
   if(memcmp(&refCamMatrix.a00, &m.a00, sizeof(nvmath::mat4f)) != 0 || refFov != fov)
   {

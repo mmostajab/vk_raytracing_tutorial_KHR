@@ -8,15 +8,6 @@
 
 extern std::vector<std::string> defaultSearchPaths;
 
-DDGI::DDGI()
-{
-}
-
-DDGI::~DDGI()
-{
-
-}
-
 void DDGI::setup(   const vk::Device&         device,
 					const vk::PhysicalDevice& physicalDevice,
 					nvvk::Allocator*          allocator,
@@ -45,6 +36,9 @@ void DDGI::createRtDescriptorSet(const vk::AccelerationStructureKHR& tlas)
                                           vkSS::eRaygenKHR | vkSS::eClosestHitKHR));  // TLAS
   m_rtDescSetLayoutBind.addBinding(
       vkDSLB(1, vkDT::eStorageImage, 1, vkSS::eRaygenKHR));  // Output image
+
+  m_rtDescSetLayoutBind.addBinding(
+      vkDSLB(1, vkDT::eStorageImage, 2, vkSS::eRaygenKHR));  // Output image
 
   m_rtDescPool      = m_rtDescSetLayoutBind.createPool(m_device);
   m_rtDescSetLayout = m_rtDescSetLayoutBind.createLayout(m_device);
@@ -91,12 +85,6 @@ void DDGI::createRtPipeline(vk::DescriptorSetLayout& sceneDescLayout)
       nvvk::createShaderModule(m_device,  //
                                nvh::loadFile("shaders/ddgi.rmiss.spv", true, paths, true));
 
-  // The second miss shader is invoked when a shadow ray misses the geometry. It
-  // simply indicates that no occlusion has been found
-  vk::ShaderModule shadowmissSM = nvvk::createShaderModule(
-      m_device, nvh::loadFile("shaders/raytraceShadow.rmiss.spv", true, paths, true));
-
-
   std::vector<vk::PipelineShaderStageCreateInfo> stages;
 
   // Raygen
@@ -114,51 +102,18 @@ void DDGI::createRtPipeline(vk::DescriptorSetLayout& sceneDescLayout)
   stages.push_back({{}, vk::ShaderStageFlagBits::eMissKHR, missSM, "main"});
   mg.setGeneralShader(static_cast<uint32_t>(stages.size() - 1));
   m_rtShaderGroups.push_back(mg);  // 1
-  // Shadow Miss
-  stages.push_back({{}, vk::ShaderStageFlagBits::eMissKHR, shadowmissSM, "main"});
-  mg.setGeneralShader(static_cast<uint32_t>(stages.size() - 1));
-  m_rtShaderGroups.push_back(mg);  // 2
 
   // Hit Group0 - Closest Hit + AnyHit
   vk::ShaderModule chitSM =
       nvvk::createShaderModule(m_device,  //
-                               nvh::loadFile("shaders/raytrace.rchit.spv", true, paths, true));
-  vk::ShaderModule ahitSM =
-      nvvk::createShaderModule(m_device,  //
-                               nvh::loadFile("shaders/raytrace.rahit.spv", true, paths, true));
+                               nvh::loadFile("shaders/ddgi.rchit.spv", true, paths, true));
 
   vk::RayTracingShaderGroupCreateInfoKHR hg{vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,
                                             VK_SHADER_UNUSED_KHR, VK_SHADER_UNUSED_KHR,
                                             VK_SHADER_UNUSED_KHR, VK_SHADER_UNUSED_KHR};
   stages.push_back({{}, vk::ShaderStageFlagBits::eClosestHitKHR, chitSM, "main"});
   hg.setClosestHitShader(static_cast<uint32_t>(stages.size() - 1));
-  stages.push_back({{}, vk::ShaderStageFlagBits::eAnyHitKHR, ahitSM, "main"});
-  hg.setAnyHitShader(static_cast<uint32_t>(stages.size() - 1));
   m_rtShaderGroups.push_back(hg);  // 3
-
-
-  // Hit Group1 - Closest Hit + Intersection (procedural)
-  vk::ShaderModule chit2SM =
-      nvvk::createShaderModule(m_device,  //
-                               nvh::loadFile("shaders/raytrace2.rchit.spv", true, paths, true));
-  vk::ShaderModule ahit2SM =
-      nvvk::createShaderModule(m_device,  //
-                               nvh::loadFile("shaders/raytrace2.rahit.spv", true, paths, true));
-  vk::ShaderModule rintSM =
-      nvvk::createShaderModule(m_device,  //
-                               nvh::loadFile("shaders/raytrace.rint.spv", true, paths, true));
-  {
-    vk::RayTracingShaderGroupCreateInfoKHR hg{vk::RayTracingShaderGroupTypeKHR::eProceduralHitGroup,
-                                              VK_SHADER_UNUSED_KHR, VK_SHADER_UNUSED_KHR,
-                                              VK_SHADER_UNUSED_KHR, VK_SHADER_UNUSED_KHR};
-    stages.push_back({{}, vk::ShaderStageFlagBits::eClosestHitKHR, chit2SM, "main"});
-    hg.setClosestHitShader(static_cast<uint32_t>(stages.size() - 1));
-    stages.push_back({{}, vk::ShaderStageFlagBits::eAnyHitKHR, ahit2SM, "main"});
-    hg.setAnyHitShader(static_cast<uint32_t>(stages.size() - 1));
-    stages.push_back({{}, vk::ShaderStageFlagBits::eIntersectionKHR, rintSM, "main"});
-    hg.setIntersectionShader(static_cast<uint32_t>(stages.size() - 1));
-    m_rtShaderGroups.push_back(hg);  // 4
-  }
 
   // Callable shaders
   vk::RayTracingShaderGroupCreateInfoKHR callGroup{vk::RayTracingShaderGroupTypeKHR::eGeneral,
@@ -177,19 +132,19 @@ void DDGI::createRtPipeline(vk::DescriptorSetLayout& sceneDescLayout)
 
   stages.push_back({{}, vk::ShaderStageFlagBits::eCallableKHR, call0, "main"});
   callGroup.setGeneralShader(static_cast<uint32_t>(stages.size() - 1));
-  m_rtShaderGroups.push_back(callGroup);  // 5
+  m_rtShaderGroups.push_back(callGroup);  // 4
   stages.push_back({{}, vk::ShaderStageFlagBits::eCallableKHR, call1, "main"});
   callGroup.setGeneralShader(static_cast<uint32_t>(stages.size() - 1));
-  m_rtShaderGroups.push_back(callGroup);  // 6
+  m_rtShaderGroups.push_back(callGroup);  // 5
   stages.push_back({{}, vk::ShaderStageFlagBits::eCallableKHR, call2, "main"});
   callGroup.setGeneralShader(static_cast<uint32_t>(stages.size() - 1));
-  m_rtShaderGroups.push_back(callGroup);  //7
+  m_rtShaderGroups.push_back(callGroup);  // 6
 
 
   vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo;
 
   // Push constant: we want to be able to update constants used by the shaders
-  vk::PushConstantRange pushConstant{vk::ShaderStageFlagBits::eRaygenKHR
+  vk::PushConstantRange pushConstant{      vk::ShaderStageFlagBits::eRaygenKHR
                                          | vk::ShaderStageFlagBits::eClosestHitKHR
                                          | vk::ShaderStageFlagBits::eMissKHR
                                          | vk::ShaderStageFlagBits::eCallableKHR,
@@ -220,12 +175,7 @@ void DDGI::createRtPipeline(vk::DescriptorSetLayout& sceneDescLayout)
 
   m_device.destroy(raygenSM);
   m_device.destroy(missSM);
-  m_device.destroy(shadowmissSM);
   m_device.destroy(chitSM);
-  m_device.destroy(ahitSM);
-  m_device.destroy(chit2SM);
-  m_device.destroy(ahit2SM);
-  m_device.destroy(rintSM);
   m_device.destroy(call0);
   m_device.destroy(call1);
   m_device.destroy(call2);
@@ -275,10 +225,46 @@ void DDGI::createRtShaderBindingTable()
   m_alloc->finalizeAndReleaseStaging();
 }
 
-void DDGI::build() {
+void DDGI::build(const vk::CommandBuffer& cmdBuf) {
 
 }
 
-void DDGI::update() {
+void DDGI::update(uint32_t w, uint32_t h)
+{
+  if(width == w && height == h)
+    return;
 
+  // Wait for GPU work to be finished
+  m_device.waitIdle();
+  m_alloc->destroy(irradianceTex);
+  m_alloc->destroy(visibilityTex);
+
+  vk::SamplerCreateInfo samplerCreateInfo{
+      {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eNearest};
+  samplerCreateInfo.setMaxLod(FLT_MAX);
+
+  {
+	auto imgSize         = vk::Extent2D(w, h);
+	auto imageCreateInfo = nvvk::makeImage2DCreateInfo(imgSize, vk::Format::eR16G16B16A16Sfloat, 
+		vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
+
+	// Creating the VKImage
+	nvvk::Image image = m_alloc->createImage(imageCreateInfo, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	vk::ImageViewCreateInfo ivInfo = nvvk::makeImageViewCreateInfo(image.image, imageCreateInfo);
+	irradianceTex                  = m_alloc->createTexture(image, ivInfo, samplerCreateInfo);
+  }
+
+  {
+	auto imgSize         = vk::Extent2D(w, h);
+	auto imageCreateInfo = nvvk::makeImage2DCreateInfo(imgSize, vk::Format::eR16G16Sfloat, 
+		vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
+
+	// Creating the VKImage
+	nvvk::Image image = m_alloc->createImage(imageCreateInfo, vk::MemoryPropertyFlagBits::eDeviceLocal);
+	vk::ImageViewCreateInfo ivInfo = nvvk::makeImageViewCreateInfo(image.image, imageCreateInfo);
+	visibilityTex                  = m_alloc->createTexture(image, ivInfo, samplerCreateInfo);
+  }
+
+  width = w;
+  height = h;
 }

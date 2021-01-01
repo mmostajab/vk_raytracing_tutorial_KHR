@@ -38,6 +38,7 @@
 
 #include "obj.hpp"
 #include "raytrace.hpp"
+#include "ddgi.hpp"
 
 //--------------------------------------------------------------------------------------------------
 // Simple rasterizer of OBJ objects

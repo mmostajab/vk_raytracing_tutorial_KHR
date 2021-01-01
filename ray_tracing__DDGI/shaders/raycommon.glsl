@@ -9,6 +9,12 @@ struct hitPayload
   vec3 rayDir;
 };
 
+struct ddgiHitPayload
+{
+  vec4   irradiance;
+  float  depth;
+  float  depth2;
+};
 
 struct rayLight
 {

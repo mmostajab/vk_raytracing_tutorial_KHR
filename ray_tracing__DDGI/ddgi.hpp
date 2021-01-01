@@ -11,8 +11,8 @@
 class DDGI
 {
 public:
-  DDGI();
-  ~DDGI();
+  DDGI()  = default;
+  ~DDGI() = default;
 
   void setup(const vk::Device& device, const vk::PhysicalDevice& physicalDevice, nvvk::Allocator* allocator, uint32_t queueFamily);
   void createRtDescriptorSet(const vk::AccelerationStructureKHR& tlas);
@@ -20,8 +20,8 @@ public:
   void createRtPipeline(vk::DescriptorSetLayout& sceneDescLayout);
   void createRtShaderBindingTable();
 
-  void build();
-  void update();
+  void build(const vk::CommandBuffer& cmdBuf);
+  void update(uint32_t w, uint32_t h);
 
   const nvvk::Texture& GetIrradianceTex() const { return irradianceTex; }
   const nvvk::Texture& GetVisibilityTex() const { return visibilityTex; }

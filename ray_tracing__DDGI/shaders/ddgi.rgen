@@ -1,0 +1,58 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+#extension GL_GOOGLE_include_directive : enable
+#include "random.glsl"
+#include "raycommon.glsl"
+
+layout(binding = 0, set = 0) uniform accelerationStructureEXT topLevelAS;
+
+layout(binding = 1, set = 0, r11f_g11f_b10f) uniform image2D irradianceTex;
+layout(binding = 2, set = 0, rg16)           uniform image2D visibilityTex;
+
+layout(location = 0) rayPayloadEXT ddgiHitPayload prd;
+
+layout(binding = 0, set = 1) uniform CameraProperties
+{
+  mat4 view;
+  mat4 proj;
+  mat4 viewInverse;
+  mat4 projInverse;
+}
+cam;
+
+layout(push_constant) uniform Constants
+{
+  vec4  clearColor;
+  vec3  lightPosition;
+  float lightIntensity;
+  vec3  lightDirection;
+  float lightSpotCutoff;
+  float lightSpotOuterCutoff;
+  int   lightType;
+  int   frame;
+}
+pushC;
+
+const int NBSAMPLES = 5;
+
+void main()
+{
+  prd.irradiance = vec4(0, 0, 0, 0);
+  prd.depth      = 0;
+  prd.depth2     = 0;
+
+  // Do accumulation over time
+  if(pushC.frame >= 0)
+  {
+    float a         = 1.0f / float(pushC.frame + 1);
+    vec3  old_color = imageLoad(irradianceTex, ivec2(gl_LaunchIDEXT.xy)).xyz;
+    imageStore(irradianceTex, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, prd.irradiance.rgb, a), 1.0f));
+	imageStore(visibilityTex, ivec2(gl_LaunchIDEXT.xy), vec4(prd.depth, prd.depth2, 0.0f, 0.0f));
+  }
+  else
+  {
+    // First frame, replace the value in the buffer
+    imageStore(irradianceTex, ivec2(gl_LaunchIDEXT.xy), prd.irradiance);
+	imageStore(visibilityTex, ivec2(gl_LaunchIDEXT.xy), vec4(prd.depth, prd.depth2, 0.0f, 0.0f));
+  }
+}
