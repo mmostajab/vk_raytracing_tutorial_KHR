@@ -8,6 +8,11 @@
 #include "nvmath/nvmath.h"
 #include "nvvk/raytraceKHR_vk.hpp"
 
+struct GpuDDGIProperties
+{
+
+};
+
 class DDGI
 {
 public:

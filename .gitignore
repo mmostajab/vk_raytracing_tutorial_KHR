@@ -18,3 +18,16 @@
 *.rule
 *.check_cache
 *.exe
+build_vs2017/.vs/vk_raytracing_tutorial/v15/.suo
+*.db
+*.opendb
+*.ipch
+*.db-shm
+*.db-wal
+build_vs2017/ray_tracing__DDGI/vk_ray_tracing__DDGI_KHR.dir/Debug/vc141.idb
+*.cmake
+build_vs2017/CMakeFiles/TargetDirectories.txt
+build_vs2017/CMakeFiles/3.14.5/VCTargetsPath.txt
+build_vs2017/CMakeFiles/feature_tests.bin
+build_vs2017/CMakeFiles/feature_tests.c
+build_vs2017/CMakeCache.txt

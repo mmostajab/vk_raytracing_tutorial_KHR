@@ -20,6 +20,18 @@ layout(binding = 0, set = 1) uniform CameraProperties
 }
 cam;
 
+#define MAX_SUBSAMPLES_PER_PROBE 4 * 1024
+
+layout(binding = 0, set = 2) uniform DDGIProperties
+{
+  vec4 minPoint;
+  vec4 maxPoint;
+  vec4 probeDim;
+  uint subSamplesPerProbe;
+  vec4 subSampleDirs[MAX_SUBSAMPLES_PER_PROBE]; 
+}
+ddgiProps;
+
 layout(push_constant) uniform Constants
 {
   vec4  clearColor;
@@ -33,26 +45,50 @@ layout(push_constant) uniform Constants
 }
 pushC;
 
-const int NBSAMPLES = 5;
-
 void main()
 {
   prd.irradiance = vec4(0, 0, 0, 0);
   prd.depth      = 0;
   prd.depth2     = 0;
+  
+  uint  subSampleID = gl_LaunchIDEXT.x   % ddgiProps.subSamplesPerProbe;
+  uvec3 sampleIdx   = uvec3(gl_LaunchIDEXT.xyz * vec3(1.0f / ddgiProps.subSamplesPerProbe, 1.0f, 1.0f));
+  
+  vec3 samplePos = ddgiProps.minPoint.xyz + (sampleIdx + 0.5f) * ddgiProps.probeDim.xyz;
+  vec3 sampleDir = ddgiProps.subSampleDirs[subSampleID].xyz;
+  
+  uint  rayFlags = gl_RayFlagsNoneEXT;
+  float tMin = 0.01f;
+  float tMax = 10000.0f;
+  
+  traceRayEXT(topLevelAS,     // acceleration structure
+                  rayFlags,       // rayFlags
+                  0xFF,           // cullMask
+                  0,              // sbtRecordOffset
+                  0,              // sbtRecordStride
+                  0,              // missIndex
+                  samplePos,      // ray origin
+                  tMin,           // ray min range
+                  sampleDir,      // ray direction
+                  tMax,           // ray max range
+                  0               // payload (location = 0)
+			);
+  
+  imageStore(irradianceTex, ivec2(gl_LaunchIDEXT.xy), prd.irradiance);
+  imageStore(visibilityTex, ivec2(gl_LaunchIDEXT.xy), vec4(prd.depth, prd.depth2, 0.0f, 0.0f));
 
   // Do accumulation over time
-  if(pushC.frame >= 0)
-  {
-    float a         = 1.0f / float(pushC.frame + 1);
-    vec3  old_color = imageLoad(irradianceTex, ivec2(gl_LaunchIDEXT.xy)).xyz;
-    imageStore(irradianceTex, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, prd.irradiance.rgb, a), 1.0f));
-	imageStore(visibilityTex, ivec2(gl_LaunchIDEXT.xy), vec4(prd.depth, prd.depth2, 0.0f, 0.0f));
-  }
-  else
-  {
-    // First frame, replace the value in the buffer
-    imageStore(irradianceTex, ivec2(gl_LaunchIDEXT.xy), prd.irradiance);
-	imageStore(visibilityTex, ivec2(gl_LaunchIDEXT.xy), vec4(prd.depth, prd.depth2, 0.0f, 0.0f));
-  }
+  //if(pushC.frame >= 0)
+  //{
+  //  float a         = 1.0f / float(pushC.frame + 1);
+  //  vec3  old_color = imageLoad(irradianceTex, ivec2(gl_LaunchIDEXT.xy)).xyz;
+  //  imageStore(irradianceTex, ivec2(gl_LaunchIDEXT.xy), vec4(mix(old_color, prd.irradiance.rgb, a), 1.0f));
+  //  imageStore(visibilityTex, ivec2(gl_LaunchIDEXT.xy), vec4(prd.depth, prd.depth2, 0.0f, 0.0f));
+  //}
+  //else
+  //{
+  //  // First frame, replace the value in the buffer
+  //  imageStore(irradianceTex, ivec2(gl_LaunchIDEXT.xy), prd.irradiance);
+  //  imageStore(visibilityTex, ivec2(gl_LaunchIDEXT.xy), vec4(prd.depth, prd.depth2, 0.0f, 0.0f));
+  //}
 }
