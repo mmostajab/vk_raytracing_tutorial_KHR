@@ -11,7 +11,7 @@ layout(binding = 2, set = 0, rg16)           uniform image2D visibilityTex;
 
 layout(location = 0) rayPayloadEXT ddgiHitPayload prd;
 
-layout(binding = 0, set = 1) uniform CameraProperties
+layout(binding = 3, set = 0) uniform CameraProperties
 {
   mat4 view;
   mat4 proj;
@@ -22,15 +22,36 @@ cam;
 
 #define MAX_SUBSAMPLES_PER_PROBE 4 * 1024
 
-layout(binding = 0, set = 2) uniform DDGIProperties
+layout(binding = 4, set = 0) uniform DDGIProperties
 {
-  vec4 minPoint;
-  vec4 maxPoint;
-  vec4 probeDim;
-  uint subSamplesPerProbe;
-  vec4 subSampleDirs[MAX_SUBSAMPLES_PER_PROBE]; 
+  vec4  minPoint;
+  vec4  maxPoint;
+  vec4  probeDim;
+  uint  subSamplesPerProbe;
+  vec4  subSampleDirs       [MAX_SUBSAMPLES_PER_PROBE]; 
+  uvec4 subSampleStoreOffset[MAX_SUBSAMPLES_PER_PROBE]; 
 }
 ddgiProps;
+
+uint GetSubSampleID()
+{
+	return gl_LaunchIDEXT.x % ddgiProps.subSamplesPerProbe;
+}
+
+uvec3 GetProbeIdx()
+{
+	return uvec3(gl_LaunchIDEXT.xyz * vec3(1.0f / ddgiProps.subSamplesPerProbe, 1.0f, 1.0f));
+}
+
+vec3 GetSubSampleDirection(uint subSampleID)
+{
+	return ddgiProps.subSampleDirs[subSampleID].xyz;
+}
+
+uvec3 GetSubSampleStoreOffset(uint subSampleID)
+{
+	return ddgiProps.subSampleStoreOffset[subSampleID].xyz;
+}
 
 layout(push_constant) uniform Constants
 {
@@ -51,11 +72,11 @@ void main()
   prd.depth      = 0;
   prd.depth2     = 0;
   
-  uint  subSampleID = gl_LaunchIDEXT.x   % ddgiProps.subSamplesPerProbe;
-  uvec3 sampleIdx   = uvec3(gl_LaunchIDEXT.xyz * vec3(1.0f / ddgiProps.subSamplesPerProbe, 1.0f, 1.0f));
+  uint  subSampleID = GetSubSampleID();
+  uvec3 probeIdx    = GetProbeIdx();
   
-  vec3 samplePos = ddgiProps.minPoint.xyz + (sampleIdx + 0.5f) * ddgiProps.probeDim.xyz;
-  vec3 sampleDir = ddgiProps.subSampleDirs[subSampleID].xyz;
+  vec3 samplePos = ddgiProps.minPoint.xyz + (probeIdx + 0.5f) * ddgiProps.probeDim.xyz;
+  vec3 sampleDir = GetSubSampleDirection(subSampleID);
   
   uint  rayFlags = gl_RayFlagsNoneEXT;
   float tMin = 0.01f;

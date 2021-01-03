@@ -24,6 +24,15 @@ void DDGI::setup(   const vk::Device&         device,
                                       vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
   m_rtProperties = properties.get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
   m_debug.setup(device);
+
+  if(!m_ddgiPropsBuff.buffer)
+  {
+    m_ddgiPropsBuff = m_alloc->createBuffer(sizeof(GpuDDGIProperties),
+                                            vk::BufferUsageFlagBits::eUniformBuffer
+                                                | vk::BufferUsageFlagBits::eTransferDst,
+                                            vk::MemoryPropertyFlagBits::eDeviceLocal);
+    m_debug.setObjectName(m_ddgiPropsBuff.buffer, "ddgiPropsBuffer");
+  }
 }
 
 void DDGI::createRtDescriptorSet(const vk::AccelerationStructureKHR& tlas)
@@ -32,13 +41,18 @@ void DDGI::createRtDescriptorSet(const vk::AccelerationStructureKHR& tlas)
   using vkSS   = vk::ShaderStageFlagBits;
   using vkDSLB = vk::DescriptorSetLayoutBinding;
 
-  m_rtDescSetLayoutBind.addBinding(vkDSLB(0, vkDT::eAccelerationStructureKHR, 1,
-                                          vkSS::eRaygenKHR | vkSS::eClosestHitKHR));  // TLAS
+  m_rtDescSetLayoutBind.addBinding(
+	  vkDSLB(0, vkDT::eAccelerationStructureKHR, 1, vkSS::eRaygenKHR | vkSS::eClosestHitKHR));  // TLAS
   m_rtDescSetLayoutBind.addBinding(
       vkDSLB(1, vkDT::eStorageImage, 1, vkSS::eRaygenKHR));  // Output image
-
   m_rtDescSetLayoutBind.addBinding(
-      vkDSLB(1, vkDT::eStorageImage, 2, vkSS::eRaygenKHR));  // Output image
+      vkDSLB(2, vkDT::eStorageImage, 1, vkSS::eRaygenKHR));  // Output image
+  m_rtDescSetLayoutBind.addBinding(
+      vkDSLB(3, vkDT::eUniformBuffer, 1,
+             vkSS::eRaygenKHR | vkSS::eClosestHitKHR | vkSS::eMissKHR));  // ddgi props
+  m_rtDescSetLayoutBind.addBinding(
+      vkDSLB(4, vkDT::eUniformBuffer, 1,
+             vkSS::eRaygenKHR | vkSS::eClosestHitKHR | vkSS::eMissKHR));  // camera uniforms
 
   m_rtDescPool      = m_rtDescSetLayoutBind.createPool(m_device);
   m_rtDescSetLayout = m_rtDescSetLayoutBind.createLayout(m_device);
@@ -231,17 +245,12 @@ void DDGI::createRtShaderBindingTable()
 void DDGI::updateUniformBuffer(const vk::CommandBuffer& cmdBuf)
 {
   // Prepare new UBO contents on host.
-  const float    aspectRatio = m_size.width / static_cast<float>(m_size.height);
-  CameraMatrices hostUBO     = {};
-  hostUBO.view               = CameraManip.getMatrix();
-  hostUBO.proj = nvmath::perspectiveVK(CameraManip.getFov(), aspectRatio, 0.1f, 1000.0f);
-  // hostUBO.proj[1][1] *= -1;  // Inverting Y for Vulkan (not needed with perspectiveVK).
-  hostUBO.viewInverse = nvmath::invert(hostUBO.view);
-  // #VKRay
-  hostUBO.projInverse = nvmath::invert(hostUBO.proj);
+  GpuDDGIProperties gpuDDGIprops = {};
+  //gpuDDGIprops.maxPoint
 
   // UBO on the device, and what stages access it.
-  vk::Buffer deviceUBO = m_cameraMat.buffer;
+  vk::Buffer         deviceUBO = m_ddgiPropsBuff.buffer;
+  GpuDDGIProperties& hostUBO   = gpuDDGIprops;
   auto       uboUsageStages =
       vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eRayTracingShaderKHR;
 
@@ -257,7 +266,7 @@ void DDGI::updateUniformBuffer(const vk::CommandBuffer& cmdBuf)
 
   // Schedule the host-to-device upload. (hostUBO is copied into the cmd
   // buffer so it is okay to deallocate when the function returns).
-  cmdBuf.updateBuffer<CameraMatrices>(m_cameraMat.buffer, 0, hostUBO);
+  cmdBuf.updateBuffer<GpuDDGIProperties>(m_ddgiPropsBuff.buffer, 0, hostUBO);
 
   // Making sure the updated UBO will be visible.
   vk::BufferMemoryBarrier afterBarrier;
@@ -297,6 +306,7 @@ void DDGI::update(uint32_t w, uint32_t h)
 	nvvk::Image image = m_alloc->createImage(imageCreateInfo, vk::MemoryPropertyFlagBits::eDeviceLocal);
 	vk::ImageViewCreateInfo ivInfo = nvvk::makeImageViewCreateInfo(image.image, imageCreateInfo);
 	irradianceTex                  = m_alloc->createTexture(image, ivInfo, samplerCreateInfo);
+	m_debug.setObjectName(irradianceTex.image, "ddgiIrradianceTexture");
   }
 
   {
@@ -308,6 +318,8 @@ void DDGI::update(uint32_t w, uint32_t h)
 	nvvk::Image image = m_alloc->createImage(imageCreateInfo, vk::MemoryPropertyFlagBits::eDeviceLocal);
 	vk::ImageViewCreateInfo ivInfo = nvvk::makeImageViewCreateInfo(image.image, imageCreateInfo);
 	visibilityTex                  = m_alloc->createTexture(image, ivInfo, samplerCreateInfo);
+	
+	m_debug.setObjectName(visibilityTex.image, "ddgiVisibilityTexture");
   }
 
   width = w;

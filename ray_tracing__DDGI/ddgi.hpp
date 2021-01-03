@@ -8,9 +8,14 @@
 #include "nvmath/nvmath.h"
 #include "nvvk/raytraceKHR_vk.hpp"
 
+#define MAX_SUBSAMPLES_PER_PROBE 4 * 1024
 struct GpuDDGIProperties
 {
-
+  nvmath::vec4f minPoint;
+  nvmath::vec4f maxPoint;
+  nvmath::vec4f probeDim;
+  nvmath::vec4f subSamplesPerProbe;
+  nvmath::vec4f subSampleDirs[MAX_SUBSAMPLES_PER_PROBE];
 };
 
 class DDGI
@@ -19,7 +24,10 @@ public:
   DDGI()  = default;
   ~DDGI() = default;
 
-  void setup(const vk::Device& device, const vk::PhysicalDevice& physicalDevice, nvvk::Allocator* allocator, uint32_t queueFamily);
+  void setup(const vk::Device&         device,
+             const vk::PhysicalDevice& physicalDevice,
+             nvvk::Allocator*          allocator,
+             uint32_t                  queueFamily);
   void createRtDescriptorSet(const vk::AccelerationStructureKHR& tlas);
   void updateRtDescriptorSet();
   void createRtPipeline(vk::DescriptorSetLayout& sceneDescLayout);
@@ -27,6 +35,7 @@ public:
 
   void build(const vk::CommandBuffer& cmdBuf);
   void update(uint32_t w, uint32_t h);
+  void updateUniformBuffer(const vk::CommandBuffer& cmdBuf);
 
   const nvvk::Texture& GetIrradianceTex() const { return irradianceTex; }
   const nvvk::Texture& GetVisibilityTex() const { return visibilityTex; }
@@ -36,6 +45,7 @@ private:
   nvmath::vec3ui elems;
 
   uint32_t      width, height;
+  nvvk::Buffer  m_ddgiPropsBuff;
   nvvk::Texture irradianceTex;
   nvvk::Texture visibilityTex;
 

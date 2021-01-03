@@ -26,11 +26,11 @@ struct ObjPushConstants
 {
   nvmath::vec3f lightPosition{10.f, 15.f, 8.f};
   float         lightIntensity{100.f};
-  nvmath::vec3f lightDirection{-1, -1, -1};
+  nvmath::vec3f lightDirection{-0.333, -0.958, -0.061};
   float         lightSpotCutoff{cos(deg2rad(12.5f))};
   float         lightSpotOuterCutoff{cos(deg2rad(17.5f))};
   int           instanceId{0};  // To retrieve the transformation matrix
-  int           lightType{0};   // 0: point, 1: infinite
+  int           lightType{2};   // 0: point, 1: spot, 2: infinite
   int           frame{0};
 };
 

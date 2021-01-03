@@ -134,7 +134,12 @@ int main(int argc, char** argv)
 
   // Setup camera
   CameraManip.setWindowSize(SAMPLE_WIDTH, SAMPLE_HEIGHT);
-  CameraManip.setLookat({8.440, 9.041, -8.973}, {-2.462, 3.661, -0.286}, {0.000, 1.000, 0.000});
+  //CameraManip.setLookat({8.440, 9.041, -8.973}, {-2.462, 3.661, -0.286}, {0.000, 1.000, 0.000});
+  CameraManip.setLookat(
+	  {1002.789, 651.637, -133.417},  // Eye
+	  {-82.219, 176.508, -62.493},    // Center
+	  {0.000, 1.000, 0.000}           // Y - Direction
+  );
 
   // Setup Vulkan
   if(!glfwVulkanSupported())
