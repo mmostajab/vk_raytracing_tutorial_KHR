@@ -8,14 +8,23 @@
 #include "nvmath/nvmath.h"
 #include "nvvk/raytraceKHR_vk.hpp"
 
-#define MAX_SUBSAMPLES_PER_PROBE 4 * 1024
+#include "obj.hpp"
+#include "aabb.hpp"
+
+#define MAX_SUBSAMPLES_PER_PROBE (6 * 16 * 16)
 struct GpuDDGIProperties
 {
-  nvmath::vec4f minPoint;
-  nvmath::vec4f maxPoint;
-  nvmath::vec4f probeDim;
-  nvmath::vec4f subSamplesPerProbe;
-  nvmath::vec4f subSampleDirs[MAX_SUBSAMPLES_PER_PROBE];
+  nvmath::vec4f  minPoint;
+  nvmath::vec4f  maxPoint;
+  nvmath::vec4f  probeDim;
+  nvmath::vec4f  subSamplesPerProbe;
+  nvmath::vec4f  subSampleDirs       [MAX_SUBSAMPLES_PER_PROBE];
+  nvmath::vec4ui subSampleStoreOffset[MAX_SUBSAMPLES_PER_PROBE];
+};
+
+enum StorageScheme
+{
+  STORAGE_SCHEME_CUBEMAP = 0,
 };
 
 class DDGI
@@ -29,21 +38,60 @@ public:
              nvvk::Allocator*          allocator,
              uint32_t                  queueFamily);
   void createRtDescriptorSet(const vk::AccelerationStructureKHR& tlas);
-  void updateRtDescriptorSet();
+  void updateRtDescriptorSet(const vk::CommandBuffer& cmdBuf);
   void createRtPipeline(vk::DescriptorSetLayout& sceneDescLayout);
   void createRtShaderBindingTable();
 
-  void build(const vk::CommandBuffer& cmdBuf);
+  void build(const vk::CommandBuffer& cmdBuf,
+             vk::DescriptorSet&       sceneDescSet,
+             const nvmath::vec4f&     clearColor,
+             ObjPushConstants&        sceneConstants);
   void update(uint32_t w, uint32_t h);
   void updateUniformBuffer(const vk::CommandBuffer& cmdBuf);
+
+  void SetSceneBounds(const nvmath::vec3f& minPnt, const nvmath::vec3f& maxPnt)
+  {
+    minPoint = minPnt, maxPoint = maxPnt;
+  }
+  void SetProbeCountOnMaxDim(int probeCountOnMaxDim, StorageScheme scheme)
+  {
+    if(probeCountOnMaxDim == -1)
+    {
+      elems = nvmath::vec3ui(1, 1, 1);
+      return;
+    }
+
+    uint8_t    maxDimIdx = 0;
+    const auto dims      = maxPoint - minPoint;
+    if(dims[0] <= dims[1])
+      if(dims[0] <= dims[2])
+        if(dims[1] <= dims[2])
+          maxDimIdx = 2;
+        else
+          maxDimIdx = 1;
+      else
+        maxDimIdx = 1;
+    else if(dims[0] <= dims[2])
+      maxDimIdx = 2;
+    else
+      maxDimIdx = 0;
+
+    for(uint8_t axis = 0; axis < 3; ++axis)
+      elems[axis] = static_cast<unsigned int>(dims[axis] / dims[maxDimIdx] * probeCountOnMaxDim);
+
+	storageScheme = scheme;
+  }
 
   const nvvk::Texture& GetIrradianceTex() const { return irradianceTex; }
   const nvvk::Texture& GetVisibilityTex() const { return visibilityTex; }
 
 private:
   nvmath::vec3f  minPoint, maxPoint;
+  nvmath::vec2ui resolution = {16, 16};
   nvmath::vec3ui elems;
+  StorageScheme  storageScheme;
 
+  bool          m_needsDescriptorSetUpdate = true;
   uint32_t      width, height;
   nvvk::Buffer  m_ddgiPropsBuff;
   nvvk::Texture irradianceTex;

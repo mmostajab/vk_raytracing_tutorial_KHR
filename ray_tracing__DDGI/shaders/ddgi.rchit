@@ -41,6 +41,11 @@ layout(location = 3) callableDataEXT rayLight cLight;
 
 void main()
 {
+	//prd.depth      = gl_RayTmaxEXT;
+	//prd.depth2     = gl_RayTmaxEXT * gl_RayTmaxEXT;
+	//prd.irradiance = vec4(cLight.outIntensity * attenuation * (diffuse + specular), 1.0f);
+	//	return;
+
   // Object of this instance
   uint objId = scnDesc.i[gl_InstanceCustomIndexEXT].objId;
 
@@ -67,7 +72,7 @@ void main()
   worldPos = vec3(scnDesc.i[gl_InstanceCustomIndexEXT].transfo * vec4(worldPos, 1.0));
 
   cLight.inHitPosition = worldPos;
-//#define DONT_USE_CALLABLE
+#define DONT_USE_CALLABLE
 #if defined(DONT_USE_CALLABLE)
   // Point light
   if(pushC.lightType == 0)
@@ -119,7 +124,7 @@ void main()
   float attenuation = 1;
 
   // Tracing shadow ray only if the light is visible from the surface
-  if(dot(normal, cLight.outLightDir) > 0)
+  if(false && dot(normal, cLight.outLightDir) > 0)
   {
     float tMin   = 0.1;
     float tMax   = cLight.outLightDistance;
@@ -162,7 +167,7 @@ void main()
     //prd.rayDir    = rayDir;
   }
 
-  prd.depth      = gl_RayTminEXT;
-  prd.depth2     = gl_RayTminEXT * gl_RayTminEXT;;
+  prd.depth      = gl_RayTmaxEXT;
+  prd.depth2     = gl_RayTmaxEXT * gl_RayTmaxEXT;
   prd.irradiance = vec4(cLight.outIntensity * attenuation * (diffuse + specular), 1.0f);
 }

@@ -292,6 +292,11 @@ void HelloVulkan::loadModel(const std::string& filename,
   model.nbIndices  = static_cast<uint32_t>(loader.m_indices.size());
   model.nbVertices = static_cast<uint32_t>(loader.m_vertices.size());
 
+  for (const auto& v : loader.m_vertices)
+  {
+    m_aabb.Extend(v.pos);
+  }
+
   // Create the buffers on Device and copy vertices, indices and materials
   nvvk::CommandPool cmdBufGet(m_device, m_graphicsQueueIndex);
   vk::CommandBuffer cmdBuf = cmdBufGet.createCommandBuffer();
@@ -541,6 +546,8 @@ void HelloVulkan::initRayTracing()
   m_ddgi.createRtDescriptorSet(m_rtBuilder.getAccelerationStructure());
   m_ddgi.createRtPipeline(m_descSetLayout);
   m_ddgi.createRtShaderBindingTable();
+  m_ddgi.SetSceneBounds(m_aabb.min, m_aabb.max);
+  m_ddgi.SetProbeCountOnMaxDim(-1, STORAGE_SCHEME_CUBEMAP);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -676,9 +683,10 @@ void HelloVulkan::createTopLevelAS(std::vector<ObjInstance>& instances, ImplInst
 void HelloVulkan::raytrace(const vk::CommandBuffer& cmdBuf, const nvmath::vec4f& clearColor)
 {
   updateFrame();
-  if(m_pushConstants.frame >= m_maxFrames)
-    return;
-
+  //if(m_pushConstants.frame >= m_maxFrames)
+  //  return;
+  
+  m_ddgi.build(cmdBuf, m_descSet, clearColor, m_pushConstants);
   m_raytrace.raytrace(cmdBuf, clearColor, m_descSet, m_size, m_pushConstants);
 }
 
@@ -694,7 +702,7 @@ void HelloVulkan::updateFrame()
   const auto& m   = CameraManip.getMatrix();
   const auto  fov = CameraManip.getFov();
 
-  constexpr uint32_t DDGI_WIDTH = 16 * 1024, DDGI_HEIGHT = 8 * 1024;
+  constexpr uint32_t DDGI_WIDTH = 4 * 1024, DDGI_HEIGHT = 4 * 1024;
   m_ddgi.update(DDGI_WIDTH, DDGI_HEIGHT);
 
   if(memcmp(&refCamMatrix.a00, &m.a00, sizeof(nvmath::mat4f)) != 0 || refFov != fov)

@@ -38,6 +38,7 @@
 
 #include "obj.hpp"
 #include "raytrace.hpp"
+#include "aabb.hpp"
 #include "ddgi.hpp"
 
 //--------------------------------------------------------------------------------------------------
@@ -105,9 +106,10 @@ public:
 
 
   // #VKRay
-  Raytracer m_raytrace;
-  DDGI      m_ddgi;
+  Raytracer                  m_raytrace;
+  DDGI                       m_ddgi;
   nvvk::RaytracingBuilderKHR m_rtBuilder;
+  AABB                       m_aabb;
 
   void initRayTracing();
   void raytrace(const vk::CommandBuffer& cmdBuf, const nvmath::vec4f& clearColor);

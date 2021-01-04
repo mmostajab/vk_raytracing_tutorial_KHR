@@ -245,7 +245,6 @@ int main(int argc, char** argv)
     inst.transformIT = nvmath::transpose(nvmath::invert((inst.transform)));
     helloVk.m_objInstance.push_back(inst);
   }
-#endif
 
   // Creation of implicit geometry
   MaterialObj mat;
@@ -262,7 +261,7 @@ int main(int argc, char** argv)
   helloVk.addImplMaterial(mat);
   helloVk.addImplCube({-6.1, 0, -6}, {-6, 10, 6}, 0);
   helloVk.addImplSphere({1, 2, 4}, 1.f, 1);
-
+#endif
 
   helloVk.initOffscreen();
   Offscreen& offscreen = helloVk.offscreen();

@@ -20,7 +20,7 @@ layout(binding = 3, set = 0) uniform CameraProperties
 }
 cam;
 
-#define MAX_SUBSAMPLES_PER_PROBE 4 * 1024
+#define MAX_SUBSAMPLES_PER_PROBE (6 * 16 * 16)
 
 layout(binding = 4, set = 0) uniform DDGIProperties
 {
@@ -43,14 +43,19 @@ uvec3 GetProbeIdx()
 	return uvec3(gl_LaunchIDEXT.xyz * vec3(1.0f / ddgiProps.subSamplesPerProbe, 1.0f, 1.0f));
 }
 
+vec3 GetProbeCenter(uvec3 probeIdx)
+{
+	return ddgiProps.minPoint.xyz + (probeIdx + 0.5f) * ddgiProps.probeDim.xyz;
+}
+
 vec3 GetSubSampleDirection(uint subSampleID)
 {
 	return ddgiProps.subSampleDirs[subSampleID].xyz;
 }
 
-uvec3 GetSubSampleStoreOffset(uint subSampleID)
+ivec3 GetSubSampleStoreOffset(uint subSampleID)
 {
-	return ddgiProps.subSampleStoreOffset[subSampleID].xyz;
+	return ivec3(ddgiProps.subSampleStoreOffset[subSampleID].xyz);
 }
 
 layout(push_constant) uniform Constants
@@ -68,19 +73,36 @@ pushC;
 
 void main()
 {
-  prd.irradiance = vec4(0, 0, 0, 0);
-  prd.depth      = 0;
-  prd.depth2     = 0;
+  prd.irradiance = vec4(1, 0, 0, 0);
+  prd.depth      = 1;
+  prd.depth2     = 1;
   
   uint  subSampleID = GetSubSampleID();
   uvec3 probeIdx    = GetProbeIdx();
   
-  vec3 samplePos = ddgiProps.minPoint.xyz + (probeIdx + 0.5f) * ddgiProps.probeDim.xyz;
+  vec3 samplePos = GetProbeCenter(probeIdx);
   vec3 sampleDir = GetSubSampleDirection(subSampleID);
+  ivec2 resultLoc = GetSubSampleStoreOffset(subSampleID).xy;
+
+  prd.irradiance = vec4(0.5f * (sampleDir + 1.0f), 1.0f);
   
   uint  rayFlags = gl_RayFlagsNoneEXT;
   float tMin = 0.01f;
   float tMax = 10000.0f;
+
+#if 0
+  // shoot 4Kx4K rays
+  samplePos = (ddgiProps.minPoint + ddgiProps.maxPoint).xyz / 2.0f - vec3(0, 300, 0);
+  //sampleDir = normalize(vec3(-1.0f + 2.0f * gl_LaunchIDEXT.xy / vec2(gl_LaunchSizeEXT.xy), 1.0f));
+	sampleDir = normalize(vec3(
+        -1.0f,
+		-1.0f + 2.0f * gl_LaunchIDEXT.y / float(gl_LaunchSizeEXT.y), 
+		-1.0f + 2.0f * gl_LaunchIDEXT.x / float(gl_LaunchSizeEXT.x)));
+  sampleDir.y *= -1.0f;
+  resultLoc = ivec2(gl_LaunchIDEXT.xy);
+#endif
+  
+  
   
   traceRayEXT(topLevelAS,     // acceleration structure
                   rayFlags,       // rayFlags
@@ -94,9 +116,9 @@ void main()
                   tMax,           // ray max range
                   0               // payload (location = 0)
 			);
-  
-  imageStore(irradianceTex, ivec2(gl_LaunchIDEXT.xy), prd.irradiance);
-  imageStore(visibilityTex, ivec2(gl_LaunchIDEXT.xy), vec4(prd.depth, prd.depth2, 0.0f, 0.0f));
+
+  imageStore(irradianceTex, resultLoc, prd.irradiance);
+  imageStore(visibilityTex, resultLoc, vec4(prd.depth, prd.depth2, 0.0f, 0.0f));
 
   // Do accumulation over time
   //if(pushC.frame >= 0)
