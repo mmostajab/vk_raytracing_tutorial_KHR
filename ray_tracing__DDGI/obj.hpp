@@ -32,6 +32,7 @@ struct ObjPushConstants
   int           instanceId{0};  // To retrieve the transformation matrix
   int           lightType{2};   // 0: point, 1: spot, 2: infinite
   int           frame{0};
+  int           giMode{1};
 };
 
 enum EObjType

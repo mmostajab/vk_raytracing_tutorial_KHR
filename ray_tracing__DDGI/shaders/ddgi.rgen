@@ -11,7 +11,7 @@ layout(binding = 2, set = 0, rg16)           uniform image2D visibilityTex;
 
 layout(location = 0) rayPayloadEXT ddgiHitPayload prd;
 
-layout(binding = 3, set = 0) uniform CameraProperties
+layout(binding = 0, set = 1) uniform CameraProperties
 {
   mat4 view;
   mat4 proj;
@@ -20,7 +20,8 @@ layout(binding = 3, set = 0) uniform CameraProperties
 }
 cam;
 
-#define MAX_SUBSAMPLES_PER_PROBE (6 * 16 * 16)
+#define MAX_SUBSAMPLES_PER_PROBE    (6 * 16 * 16)
+#define HEMISPHERE_RANDOM_DIR_COUNT (256)
 
 layout(binding = 4, set = 0) uniform DDGIProperties
 {
@@ -28,8 +29,12 @@ layout(binding = 4, set = 0) uniform DDGIProperties
   vec4  maxPoint;
   vec4  probeDim;
   uint  subSamplesPerProbe;
-  vec4  subSampleDirs       [MAX_SUBSAMPLES_PER_PROBE]; 
-  uvec4 subSampleStoreOffset[MAX_SUBSAMPLES_PER_PROBE]; 
+  uint  samplesOnHemisphere;
+  uint  padding0;
+  uint  padding1;
+  //vec4  subSampleDirs       [MAX_SUBSAMPLES_PER_PROBE]; 
+  //uvec4 subSampleStoreOffset[MAX_SUBSAMPLES_PER_PROBE]; 
+  vec4  hemisphereRandomDirs[HEMISPHERE_RANDOM_DIR_COUNT];
 }
 ddgiProps;
 
@@ -50,12 +55,12 @@ vec3 GetProbeCenter(uvec3 probeIdx)
 
 vec3 GetSubSampleDirection(uint subSampleID)
 {
-	return ddgiProps.subSampleDirs[subSampleID].xyz;
+	return vec3(0);//ddgiProps.subSampleDirs[subSampleID].xyz;
 }
 
 ivec3 GetSubSampleStoreOffset(uint subSampleID)
 {
-	return ivec3(ddgiProps.subSampleStoreOffset[subSampleID].xyz);
+	return ivec3(0);//ddgiProps.subSampleStoreOffset[subSampleID].xyz);
 }
 
 layout(push_constant) uniform Constants
@@ -86,11 +91,10 @@ void main()
 
   prd.irradiance = vec4(0.5f * (sampleDir + 1.0f), 1.0f);
   
-  uint  rayFlags = gl_RayFlagsNoneEXT;
-  float tMin = 0.01f;
-  float tMax = 10000.0f;
+  vec4 irradiance = vec4(0);
+  vec2 depth = vec2(0);
 
-#if 0
+#if 1
   // shoot 4Kx4K rays
   samplePos = (ddgiProps.minPoint + ddgiProps.maxPoint).xyz / 2.0f - vec3(0, 300, 0);
   //sampleDir = normalize(vec3(-1.0f + 2.0f * gl_LaunchIDEXT.xy / vec2(gl_LaunchSizeEXT.xy), 1.0f));
@@ -100,25 +104,120 @@ void main()
 		-1.0f + 2.0f * gl_LaunchIDEXT.x / float(gl_LaunchSizeEXT.x)));
   sampleDir.y *= -1.0f;
   resultLoc = ivec2(gl_LaunchIDEXT.xy);
-#endif
-  
-  
-  
-  traceRayEXT(topLevelAS,     // acceleration structure
-                  rayFlags,       // rayFlags
-                  0xFF,           // cullMask
-                  0,              // sbtRecordOffset
-                  0,              // sbtRecordStride
-                  0,              // missIndex
-                  samplePos,      // ray origin
-                  tMin,           // ray min range
-                  sampleDir,      // ray direction
-                  tMax,           // ray max range
-                  0               // payload (location = 0)
-			);
 
-  imageStore(irradianceTex, resultLoc, prd.irradiance);
-  imageStore(visibilityTex, resultLoc, vec4(prd.depth, prd.depth2, 0.0f, 0.0f));
+  traceRayEXT(topLevelAS,     // acceleration structure
+						gl_RayFlagsNoneEXT,       // rayFlags
+						0xFF,           // cullMask
+						0,              // sbtRecordOffset
+						0,              // sbtRecordStride
+						0,              // missIndex
+						samplePos,      // ray origin
+						0.01,           // ray min range
+						sampleDir,      // ray direction
+						1000.0,           // ray max range
+						0               // payload (location = 0)
+					   );
+
+#if 1
+	vec3 normal = prd.normal;
+	mat3 tangentCoords = GetTangentCoords(normal);
+	vec3 hitPoint = samplePos + prd.depth * sampleDir;
+
+	for(int s = 0; s < ddgiProps.samplesOnHemisphere; ++s)
+	{
+		uint  rayFlags = gl_RayFlagsNoneEXT;
+		float tMin = 0.01f;
+		float tMax = 10000.0f;
+		vec3 randomDir = ddgiProps.hemisphereRandomDirs[s].xyz * tangentCoords;
+ 
+		traceRayEXT(topLevelAS,     // acceleration structure
+					rayFlags,       // rayFlags
+					0xFF,           // cullMask
+					0,              // sbtRecordOffset
+					0,              // sbtRecordStride
+					0,              // missIndex
+					hitPoint,      // ray origin
+					tMin,           // ray min range
+					randomDir,      // ray direction
+					tMax,           // ray max range
+					0               // payload (location = 0)
+				   );
+
+		irradiance += prd.irradiance;
+		depth      += vec2(prd.depth, prd.depth2);
+	}
+
+	irradiance /= ddgiProps.samplesOnHemisphere;
+	depth      /= ddgiProps.samplesOnHemisphere;
+#else
+	irradiance = prd.irradiance;
+	depth      = vec2(prd.depth, prd.depth2);
+#endif
+#endif
+
+#if 0
+	uint  rayFlags = gl_RayFlagsNoneEXT;
+	float tMin = 0.01f;
+	float tMax = 10000.0f;
+
+	sampleDir.x = (2 * int(gl_LaunchIDEXT.x) - int(gl_LaunchSizeEXT.x)) / float(gl_LaunchSizeEXT.x);
+	sampleDir.y = (2 * int(gl_LaunchIDEXT.y) - int(gl_LaunchSizeEXT.y)) / float(gl_LaunchSizeEXT.y);
+	sampleDir.z = sqrt(max(0, 1-((sampleDir.x*sampleDir.x)+(sampleDir.y*sampleDir.y))));
+	sampleDir = normalize(sampleDir);
+
+#if 0
+	traceRayEXT(topLevelAS,     // acceleration structure
+				rayFlags,       // rayFlags
+				0xFF,           // cullMask
+				0,              // sbtRecordOffset
+				0,              // sbtRecordStride
+				0,              // missIndex
+				samplePos,      // ray origin
+				tMin,           // ray min range
+				sampleDir,      // ray direction
+				tMax,           // ray max range
+				0               // payload (location = 0)
+			   );
+
+	irradiance += prd.irradiance;
+	depth      += vec2(prd.depth, prd.depth2);
+#endif
+#endif
+
+	if(false)
+	{
+		mat3 tangentCoords = GetTangentCoords(samplePos);
+
+		for(int s = 0; s < ddgiProps.samplesOnHemisphere; ++s)
+		{
+			uint  rayFlags = gl_RayFlagsNoneEXT;
+			float tMin = 0.01f;
+			float tMax = 10000.0f;
+			vec3 randomDir = ddgiProps.hemisphereRandomDirs[s].xyz * tangentCoords;
+ 
+			traceRayEXT(topLevelAS,     // acceleration structure
+						rayFlags,       // rayFlags
+						0xFF,           // cullMask
+						0,              // sbtRecordOffset
+						0,              // sbtRecordStride
+						0,              // missIndex
+						samplePos,      // ray origin
+						tMin,           // ray min range
+						randomDir,      // ray direction
+						tMax,           // ray max range
+						0               // payload (location = 0)
+					   );
+
+			irradiance += prd.irradiance;
+			depth      += vec2(prd.depth, prd.depth2);
+		}
+
+		irradiance /= ddgiProps.samplesOnHemisphere;
+		depth      /= ddgiProps.samplesOnHemisphere;
+	}
+
+  imageStore(irradianceTex, resultLoc, irradiance);
+  imageStore(visibilityTex, resultLoc, vec4(depth, 0.0f, 0.0f));
 
   // Do accumulation over time
   //if(pushC.frame >= 0)

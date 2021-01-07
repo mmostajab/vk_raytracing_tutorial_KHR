@@ -18,6 +18,12 @@ layout(binding = 0, set = 1) uniform CameraProperties
 }
 cam;
 
+layout(binding = 8, set = 1) uniform CommonConstants
+{
+  vec4 pointsOnSphereCosDist[512];
+}
+commonConstants;
+
 layout(push_constant) uniform Constants
 {
   vec4  clearColor;
@@ -28,6 +34,7 @@ layout(push_constant) uniform Constants
   float lightSpotOuterCutoff;
   int   lightType;
   int   frame;
+  int   giMode;
 }
 pushC;
 
@@ -72,6 +79,8 @@ void main()
     prd.hitValue    = vec3(0);
     prd.attenuation = vec3(1.f, 1.f, 1.f);
 
+	vec3 accAlbedo = vec3(1.0);
+
     for(;;)
     {
       traceRayEXT(topLevelAS,     // acceleration structure
@@ -87,8 +96,8 @@ void main()
                   0               // payload (location = 0)
       );
 
-
-      hitValues += prd.hitValue * prd.attenuation;
+	  accAlbedo *= prd.albedo;
+      hitValues += accAlbedo * prd.hitValue * prd.attenuation;
 
       prd.depth++;
       if(prd.done == 1 || prd.depth >= 10)

@@ -36,10 +36,10 @@
 #include "nvvk/raytraceKHR_vk.hpp"
 #include "offscreen.hpp"
 
-#include "obj.hpp"
-#include "raytrace.hpp"
 #include "aabb.hpp"
 #include "ddgi.hpp"
+#include "obj.hpp"
+#include "raytrace.hpp"
 
 //--------------------------------------------------------------------------------------------------
 // Simple rasterizer of OBJ objects
@@ -57,14 +57,17 @@ public:
              uint32_t                  queueFamily) override;
   void createDescriptorSetLayout();
   void createGraphicsPipeline();
-  void loadModel(const std::string& filename, const std::string& texturesPath = "media/textures/", nvmath::mat4f transform = nvmath::mat4f(1));
+  void loadModel(const std::string& filename,
+                 const std::string& texturesPath = "media/textures/",
+                 nvmath::mat4f      transform    = nvmath::mat4f(1));
   void updateDescriptorSet();
   void createUniformBuffer();
   void createSceneDescriptionBuffer();
   void createTextureImages(const vk::CommandBuffer&        cmdBuf,
-                           const std::string& texturesPath,
+                           const std::string&              texturesPath,
                            const std::vector<std::string>& textures);
   void updateUniformBuffer(const vk::CommandBuffer& cmdBuf);
+  void updateCommonConstants(const vk::CommandBuffer& cmdBuf);
   void onResize(int /*w*/, int /*h*/) override;
   void destroyResources();
   void rasterize(const vk::CommandBuffer& cmdBuff);
@@ -88,10 +91,12 @@ public:
   vk::DescriptorSet           m_descSet;
 
   int  m_maxFrames{10};
+  bool m_ignoreMaxFrames{1};
   void resetFrame();
   void updateFrame();
 
   nvvk::Buffer               m_cameraMat;  // Device-Host of the camera matrices
+  nvvk::Buffer               m_commonConstants;
   nvvk::Buffer               m_sceneDesc;  // Device buffer of the OBJ instances
   std::vector<nvvk::Texture> m_textures;   // vector of all textures of the scene
 

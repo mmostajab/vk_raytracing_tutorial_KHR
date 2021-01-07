@@ -104,7 +104,17 @@ void renderUI(HelloVulkan& helloVk)
     }
   }
 
+  if(ImGui::CollapsingHeader("Global Illumination"))
+  {
+    changed |= ImGui::RadioButton("None",        &helloVk.m_pushConstants.giMode, 0);
+    ImGui::SameLine();
+    changed |= ImGui::RadioButton("PathTracing", &helloVk.m_pushConstants.giMode, 1);
+    ImGui::SameLine();
+    changed |= ImGui::RadioButton("IrradVolume", &helloVk.m_pushConstants.giMode, 2);
+  }
+
   changed |= ImGui::SliderInt("Max Frames", &helloVk.m_maxFrames, 1, 1000);
+  changed |= ImGui::Checkbox("IgnoreMaxFrame", &helloVk.m_ignoreMaxFrames);
   if(changed)
     helloVk.resetFrame();
 }
@@ -329,6 +339,7 @@ int main(int argc, char** argv)
 
     // Updating camera buffer
     helloVk.updateUniformBuffer(cmdBuf);
+	helloVk.updateCommonConstants(cmdBuf);
 
     // Clearing screen
     vk::ClearValue clearValues[2];

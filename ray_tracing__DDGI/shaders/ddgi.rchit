@@ -170,4 +170,5 @@ void main()
   prd.depth      = gl_RayTmaxEXT;
   prd.depth2     = gl_RayTmaxEXT * gl_RayTmaxEXT;
   prd.irradiance = vec4(cLight.outIntensity * attenuation * (diffuse + specular), 1.0f);
+  prd.normal     = normal;
 }

@@ -8,6 +8,27 @@
 
 extern std::vector<std::string> defaultSearchPaths;
 
+#include <random>
+nvmath::vec4f DDGI::RandomPointOnSphereCosineDist()
+{
+  static std::default_random_engine             generator;
+  static std::uniform_real_distribution<double> distribution(0.0, 1.0);
+
+  double r1 = distribution(generator);
+  double r2 = distribution(generator);
+
+  //gpuDDGIprops.hemisphereRandomDirs[i].x = std::cos(2.0 * M_PI * r1) * 2.0f * std::sqrt(r2 * (1 - r2));
+  //gpuDDGIprops.hemisphereRandomDirs[i].y = std::sin(2.0 * M_PI * r1) * 2.0f * std::sqrt(r2 * (1 - r2));
+  //gpuDDGIprops.hemisphereRandomDirs[i].z = 1 - r2;
+
+  constexpr double PI  = 3.14159265358979323846;
+  double           phi = 2 * PI * r1;
+
+  return nvmath::vec4f(static_cast<float>(std::cos(phi) * std::sqrt(r2)),
+                       static_cast<float>(std::sin(phi) * std::sqrt(r2)),
+                       static_cast<float>(std::sqrt(1 - r2)), 1.0f);
+}
+
 void DDGI::setup(const vk::Device&         device,
                  const vk::PhysicalDevice& physicalDevice,
                  nvvk::Allocator*          allocator,
@@ -87,7 +108,7 @@ void DDGI::updateRtDescriptorSet(const vk::CommandBuffer& cmdBuf)
   m_device.waitIdle();
 
   vk::DescriptorBufferInfo cameraBufferInfo{m_ddgiPropsBuff.buffer, 0, VK_WHOLE_SIZE};
-  vk::DescriptorBufferInfo ddgiBufferInfo  {m_ddgiPropsBuff.buffer, 0, VK_WHOLE_SIZE};
+  vk::DescriptorBufferInfo ddgiBufferInfo{m_ddgiPropsBuff.buffer, 0, VK_WHOLE_SIZE};
 
   VkDescriptorImageInfo irradianceTexImageView = irradianceTex.descriptor;
   VkDescriptorImageInfo visibilityTexImageView = visibilityTex.descriptor;
@@ -272,6 +293,7 @@ void DDGI::updateUniformBuffer(const vk::CommandBuffer& cmdBuf)
       (maxPoint - minPoint) * nvmath::vec3f(1.0f / elems[0], 1.0f / elems[1], 1.0f / elems[2]);
   //elems[0] * elems[1] * elems[2];
 
+#if 0
   int     i = 1, j = 1, k = 1;
   uint8_t fixedAxis = 0;
 
@@ -303,6 +325,13 @@ void DDGI::updateUniformBuffer(const vk::CommandBuffer& cmdBuf)
         gpuDDGIprops.subSampleStoreOffset[idx] = nvmath::vec4ui(side * resolution[0] + i, j, 0, 0);
       }
   }
+#else
+  gpuDDGIprops.samplesOnHemisphere = std::min(64, HEMISPHERE_RANDOM_DIR_COUNT);
+  for(int i = 0; i < HEMISPHERE_RANDOM_DIR_COUNT; ++i)
+  {
+    gpuDDGIprops.hemisphereRandomDirs[i] = DDGI::RandomPointOnSphereCosineDist();
+  }
+#endif
 
   // UBO on the device, and what stages access it.
   vk::Buffer         deviceUBO = m_ddgiPropsBuff.buffer;
@@ -378,9 +407,9 @@ void DDGI::build(const vk::CommandBuffer& cmdBuf,
       Stride{sbtAddress + 3u * groupSize, groupStride, groupSize * 1}};  // callable
 
   cmdBuf.traceRaysKHR(&strideAddresses[0], &strideAddresses[1], &strideAddresses[2],
-                      &strideAddresses[3], 4 * 1024, 4 * 1024, 1);                      //
-                      //elems[0] * 6*resolution[0] * resolution[1], elems[1], elems[2]);  //
-					  
+                      &strideAddresses[3], 4 * 1024, 4 * 1024, 1);  //
+  //elems[0] * 6*resolution[0] * resolution[1], elems[1], elems[2]);  //
+
 
   m_debug.endLabel(cmdBuf);
 }
@@ -432,4 +461,17 @@ void DDGI::update(uint32_t w, uint32_t h)
   height = h;
 
   m_needsDescriptorSetUpdate = true;
+}
+
+void DDGI::destroy()
+{
+  m_alloc->destroy(irradianceTex);
+  m_alloc->destroy(visibilityTex);
+  m_alloc->destroy(m_ddgiPropsBuff);
+
+  m_device.destroy(m_rtDescPool);
+  m_device.destroy(m_rtDescSetLayout);
+  m_device.destroy(m_rtPipeline);
+  m_device.destroy(m_rtPipelineLayout);
+  m_alloc->destroy(m_rtSBTBuffer);
 }

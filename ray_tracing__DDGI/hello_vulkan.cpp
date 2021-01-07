@@ -56,6 +56,11 @@ struct CameraMatrices
   nvmath::mat4f projInverse;
 };
 
+struct CommonConstants
+{
+  nvmath::vec4f pointsOnSphereCosDist[512];
+};
+
 //--------------------------------------------------------------------------------------------------
 // Keep the handle on the device
 // Initialize the tool to do all our allocations: buffers, images
@@ -134,6 +139,46 @@ void HelloVulkan::updateUniformBuffer(const vk::CommandBuffer& cmdBuf)
                          vk::DependencyFlagBits::eDeviceGroup, {}, {afterBarrier}, {});
 }
 
+void HelloVulkan::updateCommonConstants(const vk::CommandBuffer& cmdBuf)
+{
+  // Prepare new UBO contents on host.
+  const float    aspectRatio = m_size.width / static_cast<float>(m_size.height);
+  CommonConstants hostUBO     = {};
+  constexpr int   sampleCount = sizeof(CommonConstants::pointsOnSphereCosDist) / sizeof(CommonConstants::pointsOnSphereCosDist[0]);
+  for(int i = 0; i < sampleCount; ++i)
+  {
+    hostUBO.pointsOnSphereCosDist[i] = DDGI::RandomPointOnSphereCosineDist();
+  }
+
+  // UBO on the device, and what stages access it.
+  vk::Buffer deviceUBO = m_commonConstants.buffer;
+  auto       uboUsageStages = vk::PipelineStageFlagBits::eRayTracingShaderKHR;
+
+  // Ensure that the modified UBO is not visible to previous frames.
+  vk::BufferMemoryBarrier beforeBarrier;
+  beforeBarrier.setSrcAccessMask(vk::AccessFlagBits::eShaderRead);
+  beforeBarrier.setDstAccessMask(vk::AccessFlagBits::eTransferWrite);
+  beforeBarrier.setBuffer(deviceUBO);
+  beforeBarrier.setOffset(0);
+  beforeBarrier.setSize(sizeof hostUBO);
+  cmdBuf.pipelineBarrier(uboUsageStages, vk::PipelineStageFlagBits::eTransfer,
+                         vk::DependencyFlagBits::eDeviceGroup, {}, {beforeBarrier}, {});
+
+  // Schedule the host-to-device upload. (hostUBO is copied into the cmd
+  // buffer so it is okay to deallocate when the function returns).
+  cmdBuf.updateBuffer<CommonConstants>(m_commonConstants.buffer, 0, hostUBO);
+
+  // Making sure the updated UBO will be visible.
+  vk::BufferMemoryBarrier afterBarrier;
+  afterBarrier.setSrcAccessMask(vk::AccessFlagBits::eTransferWrite);
+  afterBarrier.setDstAccessMask(vk::AccessFlagBits::eShaderRead);
+  afterBarrier.setBuffer(deviceUBO);
+  afterBarrier.setOffset(0);
+  afterBarrier.setSize(sizeof hostUBO);
+  cmdBuf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, uboUsageStages,
+                         vk::DependencyFlagBits::eDeviceGroup, {}, {afterBarrier}, {});
+}
+
 //--------------------------------------------------------------------------------------------------
 // Describing the layout pushed when rendering
 //
@@ -172,7 +217,9 @@ void HelloVulkan::createDescriptorSetLayout()
   m_descSetLayoutBind.addBinding(  //
       vkDS(7, vkDT::eStorageBuffer, 1,
            vkSS::eClosestHitKHR | vkSS::eIntersectionKHR | vkSS::eAnyHitKHR));
-
+  // Common Data (binding = 8)
+  m_descSetLayoutBind.addBinding(
+      vkDS(8, vkDT::eUniformBuffer, 1, vkSS::eRaygenKHR | vkSS::eClosestHitKHR | vkSS::eIntersectionKHR | vkSS::eAnyHitKHR));
 
   m_descSetLayout = m_descSetLayoutBind.createLayout(m_device);
   m_descPool      = m_descSetLayoutBind.createPool(m_device, 1);
@@ -220,6 +267,9 @@ void HelloVulkan::updateDescriptorSet()
 
   vk::DescriptorBufferInfo dbiImplDesc{m_implObjects.implBuf.buffer, 0, VK_WHOLE_SIZE};
   writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, 7, &dbiImplDesc));
+
+  vk::DescriptorBufferInfo cmnConstantsDesc{m_commonConstants.buffer, 0, VK_WHOLE_SIZE};
+  writes.emplace_back(m_descSetLayoutBind.makeWrite(m_descSet, 8, &cmnConstantsDesc));
 
   // Writing the information
   m_device.updateDescriptorSets(static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
@@ -292,7 +342,7 @@ void HelloVulkan::loadModel(const std::string& filename,
   model.nbIndices  = static_cast<uint32_t>(loader.m_indices.size());
   model.nbVertices = static_cast<uint32_t>(loader.m_vertices.size());
 
-  for (const auto& v : loader.m_vertices)
+  for(const auto& v : loader.m_vertices)
   {
     m_aabb.Extend(v.pos);
   }
@@ -337,6 +387,10 @@ void HelloVulkan::createUniformBuffer()
   m_cameraMat = m_alloc.createBuffer(sizeof(CameraMatrices),
                                      vkBU::eUniformBuffer | vkBU::eTransferDst, vkMP::eDeviceLocal);
   m_debug.setObjectName(m_cameraMat.buffer, "cameraMat");
+
+  m_commonConstants =
+      m_alloc.createBuffer(sizeof(CommonConstants), vkBU::eUniformBuffer | vkBU::eTransferDst, vkMP::eDeviceLocal);
+  m_debug.setObjectName(m_commonConstants.buffer, "commonConstants");
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -445,6 +499,7 @@ void HelloVulkan::destroyResources()
   m_device.destroy(m_descSetLayout);
   m_alloc.destroy(m_cameraMat);
   m_alloc.destroy(m_sceneDesc);
+  m_alloc.destroy(m_commonConstants);
   m_alloc.destroy(m_implObjects.implBuf);
   m_alloc.destroy(m_implObjects.implMatBuf);
 
@@ -467,6 +522,7 @@ void HelloVulkan::destroyResources()
   // #VKRay
   m_rtBuilder.destroy();
   m_raytrace.destroy();
+  m_ddgi.destroy();
 
   m_alloc.deinit();
 #ifdef NVVK_ALLOC_DMA
@@ -683,10 +739,13 @@ void HelloVulkan::createTopLevelAS(std::vector<ObjInstance>& instances, ImplInst
 void HelloVulkan::raytrace(const vk::CommandBuffer& cmdBuf, const nvmath::vec4f& clearColor)
 {
   updateFrame();
-  //if(m_pushConstants.frame >= m_maxFrames)
-  //  return;
-  
-  m_ddgi.build(cmdBuf, m_descSet, clearColor, m_pushConstants);
+  if(!m_ignoreMaxFrames && m_pushConstants.frame >= m_maxFrames)
+    return;
+
+  if(m_pushConstants.giMode == 2)
+  {
+	m_ddgi.build(cmdBuf, m_descSet, clearColor, m_pushConstants);
+  }
   m_raytrace.raytrace(cmdBuf, clearColor, m_descSet, m_size, m_pushConstants);
 }
 

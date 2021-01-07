@@ -81,5 +81,6 @@ private:
     float         lightSpotOuterCutoff{deg2rad(17.5f)};
     int           lightType{0};
     int           frame{0};
+    int           giMode{0};
   } m_rtPushConstants;
 };

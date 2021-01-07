@@ -24,6 +24,12 @@ layout(binding = 4, set = 1)  buffer MatIndexColorBuffer { int i[]; } matIndex[]
 
 // clang-format on
 
+layout(binding = 8, set = 1) uniform CommonConstants
+{
+  vec4 pointsOnSphereCosDist[512];
+}
+commonConstants;
+
 layout(push_constant) uniform Constants
 {
   vec4  clearColor;
@@ -33,6 +39,8 @@ layout(push_constant) uniform Constants
   float lightSpotCutoff;
   float lightSpotOuterCutoff;
   int   lightType;
+  int   frame;
+  int   giMode;
 }
 pushC;
 
@@ -107,12 +115,15 @@ void main()
 
   // Diffuse
   vec3 diffuse = computeDiffuse(mat, cLight.outLightDir, normal);
+  vec3 albedo = mat.diffuse;
   if(mat.textureId >= 0)
   {
     uint txtId = mat.textureId + scnDesc.i[gl_InstanceCustomIndexEXT].txtOffset;
     vec2 texCoord =
         v0.texCoord * barycentrics.x + v1.texCoord * barycentrics.y + v2.texCoord * barycentrics.z;
+	vec3 albedoTex = texture(textureSamplers[nonuniformEXT(txtId)], texCoord).xyz;
     diffuse *= texture(textureSamplers[nonuniformEXT(txtId)], texCoord).xyz;
+	albedo *= albedoTex;
   }
 
   vec3  specular    = vec3(0);
@@ -161,7 +172,21 @@ void main()
     prd.rayOrigin = origin;
     prd.rayDir    = rayDir;
   }
+  else
+  {
+	if(pushC.giMode == 1)
+	{
+	  vec3 origin = worldPos;
+	  mat3 tangentCoords = GetTangentCoords(normal);
+      vec3 rayDir   =  commonConstants.pointsOnSphereCosDist[prd.depth].xyz * tangentCoords;
+	  prd.attenuation = vec3(1.0f);
+      prd.done      = 0;
+      prd.rayOrigin = origin;
+      prd.rayDir    = rayDir;
+	}
+  }
 
 
-  prd.hitValue = vec3(cLight.outIntensity * attenuation * (diffuse + specular));
+  prd.hitValue = vec3(cLight.outIntensity * attenuation * (albedo * diffuse + specular));
+  prd.albedo = albedo;
 }

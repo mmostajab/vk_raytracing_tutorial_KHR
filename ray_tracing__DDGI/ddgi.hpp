@@ -8,18 +8,24 @@
 #include "nvmath/nvmath.h"
 #include "nvvk/raytraceKHR_vk.hpp"
 
-#include "obj.hpp"
 #include "aabb.hpp"
+#include "obj.hpp"
 
 #define MAX_SUBSAMPLES_PER_PROBE (6 * 16 * 16)
+#define HEMISPHERE_RANDOM_DIR_COUNT (256)
+
 struct GpuDDGIProperties
 {
-  nvmath::vec4f  minPoint;
-  nvmath::vec4f  maxPoint;
-  nvmath::vec4f  probeDim;
-  nvmath::vec4f  subSamplesPerProbe;
-  nvmath::vec4f  subSampleDirs       [MAX_SUBSAMPLES_PER_PROBE];
-  nvmath::vec4ui subSampleStoreOffset[MAX_SUBSAMPLES_PER_PROBE];
+  nvmath::vec4f minPoint;
+  nvmath::vec4f maxPoint;
+  nvmath::vec4f probeDim;
+  uint32_t      subSamplesPerProbe;
+  uint32_t      samplesOnHemisphere;
+  uint32_t      padding0;
+  uint32_t      padding1;
+  //nvmath::vec4f  subSampleDirs       [MAX_SUBSAMPLES_PER_PROBE];
+  //nvmath::vec4ui subSampleStoreOffset[MAX_SUBSAMPLES_PER_PROBE];
+  nvmath::vec4f hemisphereRandomDirs[HEMISPHERE_RANDOM_DIR_COUNT];
 };
 
 enum StorageScheme
@@ -79,11 +85,15 @@ public:
     for(uint8_t axis = 0; axis < 3; ++axis)
       elems[axis] = static_cast<unsigned int>(dims[axis] / dims[maxDimIdx] * probeCountOnMaxDim);
 
-	storageScheme = scheme;
+    storageScheme = scheme;
   }
 
   const nvvk::Texture& GetIrradianceTex() const { return irradianceTex; }
   const nvvk::Texture& GetVisibilityTex() const { return visibilityTex; }
+
+  static nvmath::vec4f RandomPointOnSphereCosineDist();
+
+  void destroy();
 
 private:
   nvmath::vec3f  minPoint, maxPoint;
