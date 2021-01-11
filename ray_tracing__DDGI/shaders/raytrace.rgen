@@ -38,7 +38,7 @@ layout(push_constant) uniform Constants
 }
 pushC;
 
-const int NBSAMPLES = 5;
+const int NBSAMPLES = 1;
 
 void main()
 {
@@ -47,7 +47,9 @@ void main()
       tea(gl_LaunchIDEXT.y * gl_LaunchSizeEXT.x + gl_LaunchIDEXT.x, pushC.frame * NBSAMPLES);
   prd.seed = seed;
 
-  vec3 hitValues = vec3(0);
+  vec3 directIllum   = vec3(0);
+  vec3 indirectIllum = vec3(0);
+  vec3 prevWeight    = vec3(1);
 
   for(int smpl = 0; smpl < NBSAMPLES; smpl++)
   {
@@ -78,8 +80,7 @@ void main()
     prd.depth       = 0;
     prd.hitValue    = vec3(0);
     prd.attenuation = vec3(1.f, 1.f, 1.f);
-
-	vec3 accAlbedo = vec3(1.0);
+	prd.weight      = prevWeight;
 
     for(;;)
     {
@@ -96,8 +97,16 @@ void main()
                   0               // payload (location = 0)
       );
 
-	  accAlbedo *= prd.albedo;
-      hitValues += accAlbedo * prd.hitValue * prd.attenuation;
+	  if(prd.depth == 0)
+	  {
+		directIllum   = prd.hitValue;
+	  }
+	  else
+	  {
+		indirectIllum += prevWeight * prd.hitValue;
+	  }
+
+	  prevWeight *= prd.weight;
 
       prd.depth++;
       if(prd.done == 1 || prd.depth >= 10)
@@ -108,7 +117,7 @@ void main()
       prd.done      = 1;  // Will stop if a reflective material isn't hit
     }
   }
-  prd.hitValue = hitValues / NBSAMPLES;
+  prd.hitValue = (directIllum + indirectIllum) / NBSAMPLES;
 
   // Do accumulation over time
   if(pushC.frame >= 0)

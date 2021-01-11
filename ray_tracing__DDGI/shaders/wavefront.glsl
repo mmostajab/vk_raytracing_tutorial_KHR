@@ -29,12 +29,12 @@ struct sceneDesc
 };
 
 
-vec3 computeDiffuse(WaveFrontMaterial mat, vec3 lightDir, vec3 normal)
+vec3 computeDiffuse(WaveFrontMaterial mat, vec3 lightDir, vec3 normal, bool applyAmbient)
 {
   // Lambertian
   float dotNL = max(dot(normal, lightDir), 0.0);
   vec3  c     = vec3(dotNL);
-  if(mat.illum >= 1)
+  if(applyAmbient && mat.illum >= 1)
     c += mat.ambient;
   return c;
 }

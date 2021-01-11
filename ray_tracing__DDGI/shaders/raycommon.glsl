@@ -7,7 +7,7 @@ struct hitPayload
   int  done;
   vec3 rayOrigin;
   vec3 rayDir;
-  vec3 albedo;
+  vec3 weight;
 };
 
 struct ddgiHitPayload

@@ -114,7 +114,7 @@ void main()
 
 
   // Diffuse
-  vec3 diffuse = computeDiffuse(mat, cLight.outLightDir, normal);
+  vec3 diffuse = computeDiffuse(mat, cLight.outLightDir, normal, pushC.giMode == 0);
   vec3 albedo = mat.diffuse;
   if(mat.textureId >= 0)
   {
@@ -130,9 +130,9 @@ void main()
   float attenuation = 1;
 
   // Tracing shadow ray only if the light is visible from the surface
-  if(dot(normal, cLight.outLightDir) > 0)
+  //if(dot(normal, cLight.outLightDir) > 0)
   {
-    float tMin   = 0.001;
+    float tMin   = 0.1;
     float tMax   = cLight.outLightDistance;
     vec3  origin = gl_WorldRayOriginEXT + gl_WorldRayDirectionEXT * gl_HitTEXT;
     vec3  rayDir = cLight.outLightDir;
@@ -153,12 +153,13 @@ void main()
 
     if(isShadowed)
     {
-      attenuation = 0.3;
+      attenuation = 0.15;
     }
     else
     {
       // Specular
       specular = computeSpecular(mat, gl_WorldRayDirectionEXT, cLight.outLightDir, normal);
+	   attenuation = 1.0;
     }
   }
 
@@ -186,7 +187,15 @@ void main()
 	}
   }
 
+  const float PI        = 3.14159265358979323846f;
+  const float ONE_BY_PI = 1.0f / 3.14159265358979323846f;
 
-  prd.hitValue = vec3(cLight.outIntensity * attenuation * (albedo * diffuse + specular));
-  prd.albedo = albedo;
+  float cosThetha = cos(dot(prd.rayDir, normal));
+  float pdf = cosThetha * ONE_BY_PI;
+
+  vec3 directIllum = vec3(cLight.outIntensity * attenuation * (albedo * diffuse + specular));
+  vec3 indirectIllum = vec3(0);
+
+  prd.weight = albedo * ONE_BY_PI / pdf * cosThetha;
+  prd.hitValue = directIllum + indirectIllum;
 }
