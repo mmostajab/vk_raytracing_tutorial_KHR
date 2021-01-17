@@ -41,6 +41,8 @@ layout(push_constant) uniform Constants
   int   lightType;
   int   frame;
   int   giMode;
+  float aperture;
+  float focusDistance;
 }
 pushC;
 

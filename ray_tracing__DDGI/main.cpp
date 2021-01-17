@@ -113,6 +113,12 @@ void renderUI(HelloVulkan& helloVk)
     changed |= ImGui::RadioButton("IrradVolume", &helloVk.m_pushConstants.giMode, 2);
   }
 
+  if(ImGui::CollapsingHeader("Lens"))
+  {
+    changed |= ImGui::SliderFloat("Aperture",    &helloVk.m_pushConstants.aperture,      0.0f, 20.0f);
+    changed |= ImGui::SliderFloat("Focus Dist.", &helloVk.m_pushConstants.focusDistance, 0.0f, 2000.0f);
+  }
+
   changed |= ImGui::SliderInt("Max Frames", &helloVk.m_maxFrames, 1, 1000);
   changed |= ImGui::Checkbox("IgnoreMaxFrame", &helloVk.m_ignoreMaxFrames);
   if(changed)

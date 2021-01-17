@@ -4,8 +4,8 @@
 // The OBJ model
 struct ObjModel
 {
-  uint32_t   nbIndices{0};
-  uint32_t   nbVertices{0};
+  uint32_t     nbIndices{0};
+  uint32_t     nbVertices{0};
   nvvk::Buffer vertexBuffer;    // Device buffer of all 'Vertex'
   nvvk::Buffer indexBuffer;     // Device buffer of the indices forming triangles
   nvvk::Buffer matColorBuffer;  // Device buffer of array of 'Wavefront material'
@@ -33,6 +33,8 @@ struct ObjPushConstants
   int           lightType{2};   // 0: point, 1: spot, 2: infinite
   int           frame{0};
   int           giMode{1};
+  float         aperture{2.5f};
+  float         focusDistance{1200.0f};
 };
 
 enum EObjType
@@ -55,8 +57,8 @@ struct ImplInst
 {
   std::vector<ObjImplicit> objImpl;     // All objects
   std::vector<MaterialObj> implMat;     // All materials used by implicit obj
-  nvvk::Buffer               implBuf;     // Buffer of objects
-  nvvk::Buffer               implMatBuf;  // Buffer of material
+  nvvk::Buffer             implBuf;     // Buffer of objects
+  nvvk::Buffer             implMatBuf;  // Buffer of material
   int                      blasId;
   nvmath::mat4f            transform{1};
 };

@@ -43,7 +43,8 @@ public:
              uint32_t                  queueFamily);
   void destroy();
 
-  void createRtDescriptorSet(const vk::AccelerationStructureKHR& tlas, const vk::ImageView& outputImage);
+  void createRtDescriptorSet(const vk::AccelerationStructureKHR& tlas,
+                             const vk::ImageView&                outputImage);
   void updateRtDescriptorSet(const vk::ImageView& outputImage);
   void createRtPipeline(vk::DescriptorSetLayout& sceneDescLayout);
   void createRtShaderBindingTable();
@@ -82,5 +83,7 @@ private:
     int           lightType{0};
     int           frame{0};
     int           giMode{0};
+    float         aperture{5.0f};
+    float         focusDistance{10.0f};
   } m_rtPushConstants;
 };

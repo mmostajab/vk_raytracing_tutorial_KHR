@@ -328,6 +328,8 @@ void Raytracer::raytrace(const vk::CommandBuffer& cmdBuf,
   m_rtPushConstants.lightType            = sceneConstants.lightType;
   m_rtPushConstants.frame                = sceneConstants.frame;
   m_rtPushConstants.giMode               = sceneConstants.giMode;
+  m_rtPushConstants.aperture             = sceneConstants.aperture;
+  m_rtPushConstants.focusDistance        = sceneConstants.focusDistance;
 
   cmdBuf.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, m_rtPipeline);
   cmdBuf.bindDescriptorSets(vk::PipelineBindPoint::eRayTracingKHR, m_rtPipelineLayout, 0,
