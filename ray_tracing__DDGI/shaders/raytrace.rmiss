@@ -13,5 +13,5 @@ layout(push_constant) uniform Constants
 void main()
 {
   prd.hitValue = clearColor.xyz * 0.8;
-  prd.albedo = clearColor.xyz;
+  prd.weight = vec3(1.0f);
 }

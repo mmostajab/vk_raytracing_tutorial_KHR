@@ -111,7 +111,7 @@ void main()
 
 
   // Diffuse
-  vec3 diffuse = computeDiffuse(mat, cLight.outLightDir, normal);
+  vec3 diffuse = computeDiffuse(mat, cLight.outLightDir, normal, false);
   if(mat.textureId >= 0)
   {
     uint txtId = mat.textureId + scnDesc.i[gl_InstanceCustomIndexEXT].txtOffset;
